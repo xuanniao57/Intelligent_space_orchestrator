@@ -135,10 +135,16 @@
         <span class="mini-badge">DeviceCommand</span>
       </div>
       <div class="lab-body">
+        <label class="field-label" for="sprayUrl">喷雾 HTTP 网关地址</label>
+        <input id="sprayUrl" class="text-input" value="http://192.168.1.50:22001" spellcheck="false">
+        <label class="field-label" for="smartPlugIp">智能插座 IP</label>
+        <input id="smartPlugIp" class="text-input" value="192.168.1.156" spellcheck="false">
+        <label class="field-label" for="plugTcpEndpoint">插座接入端</label>
+        <input id="plugTcpEndpoint" class="text-input" value="192.168.1.50:8080" spellcheck="false">
+        <button id="checkSprayGatewayButton" type="button" class="ghost-wide">检测喷雾链路</button>
+        <div id="sprayGatewayStatus" class="gateway-status muted">等待检测：中控 → 喷雾网关 → 智能插座</div>
         <label class="field-label" for="robotUrl">G1 假机器人地址</label>
         <input id="robotUrl" class="text-input" value="http://127.0.0.1:8731" spellcheck="false">
-        <label class="field-label" for="sprayUrl">喷雾网关地址</label>
-        <input id="sprayUrl" class="text-input" value="http://192.168.1.156:22001" spellcheck="false">
         <div class="command-grid">
           <button type="button" data-command="spray">喷雾网关</button>
           <button type="button" data-command="speaker">音响播放</button>
@@ -150,8 +156,8 @@
         <div class="input-actions">
           <button id="sendOutputTextButton" type="button" class="primary">让 Agent 生成动作链</button>
           <label class="checkline">
-            <input id="autoAckOutput" type="checkbox" checked>
-            <span>测试后自动回 ACK</span>
+            <input id="autoAckOutput" type="checkbox">
+            <span>用模拟 ACK 补齐未直连设备</span>
           </label>
         </div>
       </div>

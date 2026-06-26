@@ -2,6 +2,9 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
 const DEFAULT_ROBOT_BASE_URL = "http://127.0.0.1:8731";
+const DEFAULT_SPRAY_GATEWAY_URL = "http://192.168.1.50:22001";
+const DEFAULT_SMART_PLUG_IP = "192.168.1.156";
+const DEFAULT_PLUG_TCP_ENDPOINT = "192.168.1.50:8080";
 
 const state = {
   page: "monitor",
@@ -273,13 +276,74 @@ function robotBaseUrl() {
 }
 
 function sprayGatewayUrl() {
-  return ($("#sprayUrl")?.value || "http://192.168.1.156:22001").trim().replace(/\/$/, "");
+  return ($("#sprayUrl")?.value || DEFAULT_SPRAY_GATEWAY_URL).trim().replace(/\/$/, "");
+}
+
+function smartPlugIp() {
+  return ($("#smartPlugIp")?.value || DEFAULT_SMART_PLUG_IP).trim();
+}
+
+function plugTcpEndpoint() {
+  return ($("#plugTcpEndpoint")?.value || DEFAULT_PLUG_TCP_ENDPOINT).trim();
 }
 
 function outputRoutingOverrides() {
   return {
     spray_gateway: { direct_http: sprayGatewayUrl() },
   };
+}
+
+function renderSprayGatewayStatus(payload, failedMessage = "") {
+  const node = $("#sprayGatewayStatus");
+  if (!node) return;
+  if (!payload) {
+    node.className = "gateway-status muted";
+    node.textContent = "等待检测：中控 → 喷雾网关 → 智能插座";
+    return;
+  }
+  const plug = payload.smart_plug || {};
+  const gatewayText = payload.gateway_reachable ? "HTTP 网关可达" : "HTTP 网关不可达";
+  const plugText = plug.connected ? "智能插座已接入" : "智能插座未接入";
+  const detail = failedMessage || payload.error || payload.upstream?.error || payload.upstream?.stage || "";
+  const mode = payload.gateway_reachable && plug.connected ? "ok" : payload.gateway_reachable ? "warn" : "bad";
+  node.className = `gateway-status ${mode}`;
+  node.innerHTML = `
+    <strong>${escapeHtml(gatewayText)} / ${escapeHtml(plugText)}</strong>
+    <span>命令：${escapeHtml(payload.command_url || "-")}</span>
+    <span>插座：${escapeHtml(plug.ip || smartPlugIp())} → ${escapeHtml(plug.tcp_endpoint || plugTcpEndpoint())}</span>
+    ${detail ? `<span>状态：${escapeHtml(detail)}</span>` : ""}
+  `;
+}
+
+async function refreshSprayGatewayStatus(quiet = false) {
+  if (!$("#sprayGatewayStatus")) return null;
+  if (!quiet) {
+    renderSprayGatewayStatus({
+      gateway_reachable: false,
+      command_url: `${sprayGatewayUrl()}/api/command`,
+      smart_plug: { ip: smartPlugIp(), tcp_endpoint: plugTcpEndpoint(), connected: false },
+    }, "检测中");
+  }
+  try {
+    const params = new URLSearchParams({
+      url: sprayGatewayUrl(),
+      smart_plug_ip: smartPlugIp(),
+      plug_tcp_endpoint: plugTcpEndpoint(),
+      timeout: "2",
+    });
+    const payload = await fetchJson(`/api/agent/gateway-health?${params.toString()}`);
+    renderSprayGatewayStatus(payload);
+    return payload;
+  } catch (error) {
+    const payload = {
+      gateway_reachable: false,
+      command_url: `${sprayGatewayUrl().replace(/\/$/, "")}/api/command`,
+      smart_plug: { ip: smartPlugIp(), tcp_endpoint: plugTcpEndpoint(), connected: false },
+      error: error.message,
+    };
+    renderSprayGatewayStatus(payload, error.message);
+    return payload;
+  }
 }
 
 function showToast(message) {
@@ -397,6 +461,22 @@ function installLabTemplates() {
           <span id="outputAssemblyCount" class="mini-badge">0</span>
         </div>
         <div class="lab-body">
+          <div class="gateway-card">
+            <label class="field-label" for="sprayUrl">喷雾 HTTP 网关地址</label>
+            <input id="sprayUrl" class="text-input" value="${DEFAULT_SPRAY_GATEWAY_URL}" spellcheck="false">
+            <div class="device-map">
+              <label>
+                <span>智能插座 IP</span>
+                <input id="smartPlugIp" class="text-input compact-input" value="${DEFAULT_SMART_PLUG_IP}" spellcheck="false">
+              </label>
+              <label>
+                <span>插座接入端</span>
+                <input id="plugTcpEndpoint" class="text-input compact-input" value="${DEFAULT_PLUG_TCP_ENDPOINT}" spellcheck="false">
+              </label>
+            </div>
+            <button id="checkSprayGatewayButton" type="button" class="ghost-wide">检测喷雾链路</button>
+            <div id="sprayGatewayStatus" class="gateway-status muted">等待检测：中控 → 喷雾网关 → 智能插座</div>
+          </div>
           <label class="field-label" for="robotUrl">G1 测试端地址</label>
           <input id="robotUrl" class="text-input" value="${DEFAULT_ROBOT_BASE_URL}" spellcheck="false">
           <div id="outputAssemblyList" class="assembly-list"></div>
@@ -405,8 +485,8 @@ function installLabTemplates() {
             <button id="clearOutputAssemblyButton" type="button">清空动作链</button>
           </div>
           <label class="checkline output-check">
-            <input id="autoAckOutput" type="checkbox" checked>
-            <span>非机器人设备自动回 ACK</span>
+            <input id="autoAckOutput" type="checkbox">
+            <span>用模拟 ACK 补齐未直连设备</span>
           </label>
           <label class="field-label" for="outputText">自然语言动作测试</label>
           <textarea id="outputText" spellcheck="false" rows="3">让 G1 完成安全检查，导航到冰水点，取一杯冰水，递给热感明显的访客，并播报“清凉补给已送达”。</textarea>
@@ -633,14 +713,33 @@ function labChainItems(payload) {
     meta: command.message_id || "",
     status: "sent",
   }));
-  const dispatches = result.dispatch_results || payload?.dispatch_results || [];
+  const dispatches = [
+    ...(result.dispatch_results || payload?.dispatch_results || []),
+    ...(payload?.dispatch_result ? [payload.dispatch_result] : []),
+  ];
   dispatches.forEach((dispatch) => items.push({
     badge: "ACK",
     title: dispatch.transport || "dispatch",
-    summary: dispatch.status || dispatch.reason || "",
-    meta: dispatch.message_id || "",
+    summary: [dispatch.status || dispatch.reason || "", dispatch.response?.stage || dispatch.device_response?.stage || dispatch.error || ""]
+      .filter(Boolean)
+      .join(" / "),
+    meta: dispatch.url || dispatch.message_id || "",
     status: dispatch.status,
   }));
+  const ackRecords = [
+    ...(result.direct_ack_records || payload?.direct_ack_records || []),
+    ...(payload?.direct_ack_record ? [payload.direct_ack_record] : []),
+  ].filter(Boolean);
+  ackRecords.forEach((record) => {
+    const ack = record.ack || {};
+    items.push({
+      badge: "DEV",
+      title: `${ack.target_id || "-"} / ${ack.status || "-"}`,
+      summary: [ack.stage, ack.error].filter(Boolean).join(" / "),
+      meta: ack.message_id || "",
+      status: ack.status,
+    });
+  });
   return items;
 }
 
@@ -897,6 +996,9 @@ async function sendOutputSequence() {
       await simulateAllAcks((result.commands || []).filter((command) => !directAcked.has(command.message_id)));
     }
     renderLabResult("output", result, result.status || "sent");
+    if ((result.commands || []).some((command) => command.target_type === "spray_gateway")) {
+      await refreshSprayGatewayStatus(true);
+    }
     showToast(`输出链已发送 ${result.commands?.length || 0} 条命令`);
     await delayedRefresh();
   } catch (error) {
@@ -979,6 +1081,7 @@ async function sendOutputCommand(kind) {
     });
     if ($("#autoAckOutput").checked && !result.direct_ack_record) await simulateAck(result.command, "output_test_manual_command");
     renderLabResult("output", result, result.status || "sent");
+    if (kind === "spray") await refreshSprayGatewayStatus(true);
     showToast(`${commandType(result.command)} 已发送`);
     await delayedRefresh();
   } catch (error) {
@@ -1009,6 +1112,9 @@ async function sendOutputNaturalLanguage() {
       await simulateAllAcks(commands.filter((command) => !directAcked.has(command.message_id)));
     }
     renderLabResult("output", result, result.status || "processed");
+    if (commands.some((command) => command.target_type === "spray_gateway")) {
+      await refreshSprayGatewayStatus(true);
+    }
     showToast(`Agent 输出 ${commands.length} 条命令`);
     await delayedRefresh();
   } catch (error) {
@@ -1058,6 +1164,9 @@ async function refreshAll() {
     renderWorldState();
     renderTrajectory();
     renderInspector();
+    if (state.page === "output") {
+      refreshSprayGatewayStatus(true);
+    }
   } catch (error) {
     setStatus($("#hubStatus"), "中枢离线", "bad");
     showToast(`刷新失败: ${error.message}`);
@@ -1266,6 +1375,16 @@ function bindEvents() {
   bind("#sendGoalButton", "click", submitOperatorGoal);
   bind("#runLoopButton", "click", runLoop);
   bind("#sendOutputTextButton", "click", sendOutputNaturalLanguage);
+  bind("#checkSprayGatewayButton", "click", async () => {
+    const payload = await refreshSprayGatewayStatus(false);
+    if (payload?.gateway_reachable && payload?.smart_plug?.connected) {
+      showToast("喷雾链路在线");
+    } else if (payload?.gateway_reachable) {
+      showToast("喷雾网关在线，智能插座未接入");
+    } else {
+      showToast("喷雾网关不可达");
+    }
+  });
   bind("#previewAssemblyButton", "click", () => sendInputAssembly(false));
   bind("#sendAssemblyButton", "click", () => sendInputAssembly(true));
   bind("#clearInputAssemblyButton", "click", () => {

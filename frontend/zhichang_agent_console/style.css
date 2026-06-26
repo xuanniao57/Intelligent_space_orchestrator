@@ -626,6 +626,73 @@ textarea {
   padding: 8px 10px;
 }
 
+.compact-input {
+  height: 34px;
+}
+
+.gateway-card {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid rgba(77, 156, 235, 0.18);
+  border-radius: 8px;
+  background: rgba(4, 12, 24, 0.32);
+}
+
+.gateway-card .field-label {
+  margin-top: 0;
+}
+
+.device-map {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.device-map label {
+  display: grid;
+  gap: 5px;
+}
+
+.device-map span {
+  color: var(--text-muted);
+  font: 11px/1 var(--font-mono);
+  letter-spacing: 0.05em;
+}
+
+.gateway-status {
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: rgba(4, 12, 24, 0.48);
+}
+
+.gateway-status strong {
+  color: var(--text-primary);
+}
+
+.gateway-status span {
+  color: var(--text-muted);
+  font: 11px/1.35 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.gateway-status.ok {
+  border-color: rgba(69, 197, 111, 0.36);
+}
+
+.gateway-status.warn {
+  border-color: rgba(255, 159, 26, 0.36);
+}
+
+.gateway-status.bad {
+  border-color: rgba(239, 98, 98, 0.42);
+}
+
 .preset-row,
 .command-grid {
   display: grid;

@@ -48,6 +48,16 @@ app = Flask(__name__, static_folder=None)
 CORS(app)
 sock = Sock(app)
 
+
+@app.after_request
+def disable_agent_console_cache(response):
+    if request.path.startswith("/agent-console") or request.path.startswith("/console"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 # WebSocket 客户端列表
 ws_clients: List[Any] = []
 
@@ -943,6 +953,19 @@ def normalize_gateway_command_url(url: Optional[str], target_type: str = "") -> 
     return f"{url}/api/command"
 
 
+def normalize_gateway_health_url(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+    url = str(url).strip().rstrip("/")
+    if not url:
+        return None
+    if url.endswith("/api/command"):
+        return f"{url[: -len('/api/command')]}/health"
+    if url.endswith("/health") or url.endswith("/api/status"):
+        return url
+    return f"{url}/health"
+
+
 def merge_routing_overrides(
     routing: Dict[str, Any],
     target_id: str,
@@ -1075,13 +1098,24 @@ def maybe_dispatch_direct_http(command: Dict[str, Any]) -> Dict[str, Any]:
             if command.get("target_type") != "robot":
                 result["device_response"] = payload
     except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        try:
+            payload = json.loads(body) if body else {}
+        except json.JSONDecodeError:
+            payload = {}
         result = {
             "message_id": command.get("message_id"),
             "status": "failed",
             "transport": "direct_http",
             "url": direct_http,
-            "error": f"HTTP {exc.code}: {exc.read().decode('utf-8', errors='replace')[:500]}",
+            "error": f"HTTP {exc.code}: {body[:500]}",
+            "response": payload,
         }
+        if command.get("target_type") == "robot":
+            result["robot_response"] = payload
+        else:
+            result["robot_response"] = payload
+            result["device_response"] = payload
     except (URLError, TimeoutError, json.JSONDecodeError) as exc:
         result = {
             "message_id": command.get("message_id"),
@@ -1096,9 +1130,9 @@ def maybe_dispatch_direct_http(command: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def record_direct_dispatch_ack(command: Dict[str, Any], dispatch_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    if dispatch_result.get("status") != "ok":
+    if dispatch_result.get("status") not in {"ok", "failed"}:
         return None
-    response_payload = dispatch_result.get("robot_response") or {}
+    response_payload = dispatch_result.get("response") or dispatch_result.get("robot_response") or {}
     if not isinstance(response_payload, dict):
         return None
 
@@ -2121,6 +2155,73 @@ def post_output_test_sequence_route():
     event_stream.append({"type": "output_test_sequence", "result": payload, "time_ms": int(time.time() * 1000)})
     broadcast("device_command", {"commands": compiled["commands"], "dispatch_results": compiled["dispatch_results"], "source": "output_test_sequence"})
     return jsonify(payload)
+
+
+@app.route("/api/agent/gateway-health", methods=["GET"])
+def get_agent_gateway_health():
+    gateway_url = request.args.get("url") or request.args.get("gateway_url") or ""
+    health_url = normalize_gateway_health_url(gateway_url)
+    if not health_url:
+        return jsonify({"status": "failed", "error": "url is required"}), 400
+
+    timeout = max(0.5, min(request.args.get("timeout", 2.0, type=float), 8.0))
+    smart_plug_ip = request.args.get("smart_plug_ip") or request.args.get("plug_ip") or "192.168.1.156"
+    plug_tcp_endpoint = request.args.get("plug_tcp_endpoint") or "192.168.1.50:8080"
+    try:
+        req = UrlRequest(health_url, method="GET", headers={"Accept": "application/json"})
+        with urlopen(req, timeout=timeout) as response:
+            body = response.read().decode("utf-8", errors="replace")
+            payload = json.loads(body) if body else {}
+        plug_status = payload.get("plug") if isinstance(payload, Mapping) else None
+        plug_connected = bool(plug_status.get("connected")) if isinstance(plug_status, Mapping) else False
+        return jsonify({
+            "status": "ok" if plug_connected else "degraded",
+            "gateway_reachable": True,
+            "gateway_url": str(gateway_url).strip().rstrip("/"),
+            "health_url": health_url,
+            "command_url": normalize_gateway_command_url(gateway_url, "spray_gateway"),
+            "smart_plug": {
+                "ip": smart_plug_ip,
+                "tcp_endpoint": plug_tcp_endpoint,
+                "connected": plug_connected,
+                "status": plug_status or {"connected": False},
+            },
+            "upstream": payload,
+        })
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        try:
+            payload = json.loads(body) if body else {}
+        except json.JSONDecodeError:
+            payload = {"raw": body}
+        return jsonify({
+            "status": "failed",
+            "gateway_reachable": True,
+            "gateway_url": str(gateway_url).strip().rstrip("/"),
+            "health_url": health_url,
+            "command_url": normalize_gateway_command_url(gateway_url, "spray_gateway"),
+            "smart_plug": {
+                "ip": smart_plug_ip,
+                "tcp_endpoint": plug_tcp_endpoint,
+                "connected": False,
+            },
+            "error": f"HTTP {exc.code}",
+            "upstream": payload,
+        }), 502
+    except (URLError, TimeoutError, json.JSONDecodeError) as exc:
+        return jsonify({
+            "status": "failed",
+            "gateway_reachable": False,
+            "gateway_url": str(gateway_url).strip().rstrip("/"),
+            "health_url": health_url,
+            "command_url": normalize_gateway_command_url(gateway_url, "spray_gateway"),
+            "smart_plug": {
+                "ip": smart_plug_ip,
+                "tcp_endpoint": plug_tcp_endpoint,
+                "connected": False,
+            },
+            "error": str(exc),
+        }), 502
 
 
 @app.route("/api/agent/memory", methods=["GET"])
