@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智场控制中枢 · 三页宣传版</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;600;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-primary: #0A1628;
+            --bg-secondary: #0F1F38;
+            --bg-card: #132844;
+            --bg-card-alt: #182E4E;
+            --text-primary: #E8EDF3;
+            --text-secondary: #96A8C0;
+            --text-muted: #647089;
+            --accent: #D4A843;
+            --accent-bright: #E8C560;
+            --accent-subtle: rgba(212, 168, 67, 0.15);
+            --blue-accent: #4A90D9;
+            --green-accent: #43A047;
+            --orange-accent: #FF9800;
+            --red-accent: #E53935;
+            --purple-accent: #7B1FA2;
+            --cyan-accent: #00BCD4;
+            --border-subtle: rgba(255,255,255,0.06);
+            --border-card: rgba(255,255,255,0.08);
+            --font-display: 'Noto Serif SC', serif;
+            --font-body: 'Noto Sans SC', sans-serif;
+            --font-mono: 'DM Mono', monospace;
+            --section-title-size: 36px;
+            --subtitle-size: 22px;
+            --body-size: 18px;
+            --small-size: 15px;
+            --caption-size: 13px;
+            --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+            --duration-normal: 0.7s;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--bg-primary); }
+        .deck-viewport { position: fixed; inset: 0; overflow: hidden; background: var(--bg-primary); }
+        .deck-stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; transform-origin: 0 0; background: var(--bg-primary); }
+        .slide { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; display: block; visibility: hidden; opacity: 0; pointer-events: none; background: var(--bg-primary); }
+        .slide.active, .slide.visible { visibility: visible; opacity: 1; pointer-events: auto; z-index: 1; }
+        img, video, canvas, svg { max-width: 100%; max-height: 100%; }
+
+        .deck-controls { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 1000; display: flex; align-items: center; gap: 16px; background: rgba(15,31,56,0.92); backdrop-filter: blur(12px); border: 1px solid var(--border-card); padding: 8px 20px; border-radius: 30px; }
+        .deck-controls button { background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 14px; padding: 4px 8px; border-radius: 4px; transition: color 0.2s; }
+        .deck-controls button:hover { color: var(--accent); }
+        .deck-controls .page-indicator { font-family: var(--font-mono); font-size: var(--caption-size); color: var(--text-muted); }
+
+        @media print {
+            html, body { width: 1920px; height: auto; overflow: visible; background: #fff; }
+            .deck-viewport { position: static; overflow: visible; background: #fff; }
+            .deck-stage { position: static; width: auto; height: auto; transform: none !important; background: none; }
+            .slide { position: relative; display: block !important; visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; width: 1920px; height: 1080px; break-after: page; }
+            .slide:last-child { break-after: auto; }
+            .deck-controls { display: none !important; }
+            .progress-bar { display: none !important; }
+        }
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.2s !important; } }
+
+        .progress-bar { position: fixed; top: 0; left: 0; height: 3px; background: var(--accent); z-index: 10000; transition: width 0.3s ease; }
+        .slide-bg-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px); background-size: 60px 60px; pointer-events: none; }
+        .slide-accent-line { position: absolute; top: 0; left: 80px; width: 80px; height: 3px; background: var(--accent); }
+
+        .reveal { opacity: 0; transform: translateY(28px); transition: opacity var(--duration-normal) var(--ease-out-expo), transform var(--duration-normal) var(--ease-out-expo); }
+        .slide.visible .reveal { opacity: 1; transform: translateY(0); }
+        .reveal:nth-child(1){transition-delay:.08s} .reveal:nth-child(2){transition-delay:.16s} .reveal:nth-child(3){transition-delay:.24s} .reveal:nth-child(4){transition-delay:.32s} .reveal:nth-child(5){transition-delay:.40s} .reveal:nth-child(6){transition-delay:.48s} .reveal:nth-child(7){transition-delay:.56s} .reveal:nth-child(8){transition-delay:.64s} .reveal:nth-child(9){transition-delay:.72s} .reveal:nth-child(10){transition-delay:.80s}
+
+        /* === SLIDE 1: TITLE === */
+        .title-slide { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
+            background: radial-gradient(ellipse at 30% 20%, rgba(212,168,67,0.10) 0%, transparent 55%), radial-gradient(ellipse at 75% 60%, rgba(74,144,217,0.08) 0%, transparent 55%), var(--bg-primary); }
+        .title-slide .gold-line { width: 120px; height: 3px; background: var(--accent); margin-bottom: 36px; }
+        .title-slide h1 { font-family: var(--font-display); font-size: 60px; font-weight: 900; color: var(--text-primary); letter-spacing: 0.04em; max-width: 1400px; line-height: 1.28; margin-bottom: 22px; }
+        .title-slide h1 .accent { color: var(--accent-bright); }
+        .title-slide .subtitle { font-family: var(--font-body); font-size: var(--subtitle-size); color: var(--text-secondary); font-weight: 300; max-width: 1100px; line-height: 1.7; }
+        .title-slide .date-tag { margin-top: 44px; font-family: var(--font-mono); font-size: var(--small-size); color: var(--accent); letter-spacing: 0.1em; padding: 8px 24px; border: 1px solid var(--accent-subtle); border-radius: 4px; background: var(--accent-subtle); }
+        .title-slide .tech-stack { margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+        .title-slide .tech-stack span { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); padding: 4px 12px; border: 1px solid rgba(255,255,255,0.06); border-radius: 3px; }
+
+        /* === CONTENT SLIDES === */
+        .content-slide { padding: 60px 90px; }
+        .slide-header { margin-bottom: 22px; }
+        .slide-header h2 { font-family: var(--font-display); font-size: var(--section-title-size); font-weight: 700; color: var(--text-primary); letter-spacing: 0.03em; }
+        .slide-header .header-line { width: 60px; height: 3px; background: var(--accent); margin-top: 12px; }
+        .slide-header .header-sub { font-family: var(--font-body); font-size: var(--small-size); color: var(--text-muted); margin-top: 8px; }
+
+        .tag-row { display: flex; flex-wrap: wrap; gap: 8px; }
+        .tag { font-family: var(--font-mono); font-size: var(--caption-size); color: var(--accent); background: var(--accent-subtle); padding: 4px 12px; border-radius: 4px; border: 1px solid rgba(212,168,67,0.2); }
+        .tag.blue { color: var(--blue-accent); background: rgba(74,144,217,0.15); border-color: rgba(74,144,217,0.25); }
+        .tag.green { color: var(--green-accent); background: rgba(67,160,71,0.15); border-color: rgba(67,160,71,0.25); }
+        .tag.orange { color: var(--orange-accent); background: rgba(255,152,0,0.15); border-color: rgba(255,152,0,0.25); }
+        .tag.purple { color: var(--purple-accent); background: rgba(123,31,162,0.18); border-color: rgba(123,31,162,0.3); }
+        .tag.cyan { color: var(--cyan-accent); background: rgba(0,188,212,0.15); border-color: rgba(0,188,212,0.3); }
+
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+
+        /* === SLIDE 2: AGENT HARNESS + LOOP === */
+        .agent-loop { display: grid; grid-template-columns: 1fr 22px 1fr 22px 1fr 22px 1fr 22px 1fr 22px 1fr 22px 1fr; gap: 6px; align-items: stretch; }
+        .loop-stage { background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 8px; padding: 14px 10px 12px; text-align: center; }
+        .loop-stage .ls-badge { width: 34px; height: 34px; border-radius: 50%; margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: #fff; }
+        .loop-stage .ls-title { font-family: var(--font-body); font-size: 15px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
+        .loop-stage .ls-sub { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); line-height: 1.4; }
+        .ls-perc .ls-badge { background: var(--blue-accent); } .ls-perc { border-color: rgba(74,144,217,0.3); }
+        .ls-think .ls-badge { background: var(--purple-accent); } .ls-think { border-color: rgba(123,31,162,0.3); }
+        .ls-plan .ls-badge { background: var(--accent); } .ls-plan { border-color: rgba(212,168,67,0.3); }
+        .ls-act .ls-badge { background: var(--green-accent); } .ls-act { border-color: rgba(67,160,71,0.3); }
+        .ls-verify .ls-badge { background: var(--orange-accent); } .ls-verify { border-color: rgba(255,152,0,0.3); }
+        .ls-mem .ls-badge { background: var(--cyan-accent); } .ls-mem { border-color: rgba(0,188,212,0.3); }
+        .ls-mine .ls-badge { background: #EC407A; } .ls-mine { border-color: rgba(236,64,122,0.3); }
+        .loop-arr { display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 18px; color: var(--accent); }
+        .loop-return { text-align: center; margin-top: 8px; font-family: var(--font-mono); font-size: 12px; color: var(--accent-bright); background: var(--accent-subtle); border: 1px dashed rgba(212,168,67,0.35); border-radius: 20px; padding: 6px 16px; }
+
+        .harness-panels { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px; }
+        .harness-panel { background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 8px; padding: 18px 20px; }
+        .harness-panel .hp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+        .harness-panel .hp-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .harness-panel h4 { font-family: var(--font-body); font-size: 17px; font-weight: 700; color: var(--text-primary); }
+        .harness-panel .hp-sub { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-bottom: 12px; }
+        .harness-panel ul { list-style: none; padding: 0; margin: 0; }
+        .harness-panel li { font-family: var(--font-body); font-size: 13.5px; color: var(--text-secondary); line-height: 1.7; margin-bottom: 8px; padding-left: 14px; position: relative; }
+        .harness-panel li::before { content: '▸'; position: absolute; left: 0; top: 0; font-size: 11px; color: var(--accent); }
+        .harness-panel li b { color: var(--accent-bright); }
+        .panel-ctx .hp-dot { background: var(--blue-accent); }
+        .panel-mem .hp-dot { background: var(--cyan-accent); }
+        .panel-tool .hp-dot { background: var(--green-accent); }
+        .tool-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+        .tool-chip { font-family: var(--font-mono); font-size: 10.5px; padding: 3px 8px; border-radius: 3px; color: var(--green-accent); background: rgba(67,160,71,0.13); border: 1px solid rgba(67,160,71,0.28); }
+
+        .ref-line { margin-top: 14px; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); line-height: 1.65; }
+        .ref-line b { color: var(--accent); }
+
+        /* === SLIDE 3: AGENT TRAJECTORY CHAIN === */
+        .scenario-col { background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 10px; padding: 24px 26px; display: flex; flex-direction: column; }
+        .scenario-col .sc-num { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); letter-spacing: 0.1em; }
+        .scenario-col h3 { font-family: var(--font-display); font-size: 24px; font-weight: 700; margin: 4px 0 4px; }
+        .scenario-col .sc-sub { font-family: var(--font-body); font-size: 13.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px; }
+        .scenario-col.heat h3 { color: var(--orange-accent); }
+        .scenario-col.music h3 { color: var(--purple-accent); }
+        .scenario-col .sc-tags { margin-bottom: 12px; }
+
+        .traj-list { position: relative; padding-left: 24px; }
+        .traj-list::before { content: ''; position: absolute; left: 10px; top: 6px; bottom: 6px; width: 2px; background: rgba(212,168,67,0.22); }
+        .traj-step { position: relative; margin-bottom: 8px; padding-left: 20px; }
+        .traj-step::before { content: ''; position: absolute; left: -18px; top: 5px; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--bg-card); }
+        .traj-step.obs::before { background: var(--blue-accent); }
+        .traj-step.think::before { background: var(--purple-accent); }
+        .traj-step.plan::before { background: var(--accent); }
+        .traj-step.act::before { background: var(--green-accent); }
+        .traj-step.verify::before { background: var(--orange-accent); }
+        .traj-step.mem::before { background: var(--cyan-accent); }
+        .traj-step .traj-head { display: flex; align-items: center; gap: 7px; margin-bottom: 2px; flex-wrap: wrap; }
+        .traj-badge { font-family: var(--font-mono); font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 3px; color: #fff; letter-spacing: 0.04em; }
+        .traj-badge.obs { background: var(--blue-accent); }
+        .traj-badge.think { background: var(--purple-accent); }
+        .traj-badge.plan { background: var(--accent); }
+        .traj-badge.act { background: var(--green-accent); }
+        .traj-badge.verify { background: var(--orange-accent); }
+        .traj-badge.mem { background: var(--cyan-accent); }
+        .traj-step .traj-label { font-family: var(--font-body); font-size: 13px; font-weight: 700; color: var(--text-primary); }
+        .traj-step .traj-detail { font-family: var(--font-body); font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+        .traj-step .traj-detail b { color: var(--accent-bright); }
+        .traj-step .tool-chip { font-size: 9.5px; padding: 2px 6px; }
+        .sc-foot { margin-top: auto; padding-top: 10px; }
+        .io-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .io-box { background: rgba(255,255,255,0.03); border: 1px solid var(--border-card); border-radius: 6px; padding: 9px 12px; }
+        .io-box .ik { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); letter-spacing: 0.05em; }
+        .io-box .iv { font-family: var(--font-body); font-size: 12px; color: var(--text-secondary); line-height: 1.4; margin-top: 2px; }
+
+        /* === SLIDE 2 fillers: data-flow band + spec strip === */
+        .flow-band { display: flex; align-items: center; justify-content: center; gap: 10px; background: var(--bg-card-alt); border: 1px solid var(--border-card); border-radius: 30px; padding: 12px 20px; }
+        .fb-chip { font-family: var(--font-body); font-size: 14px; font-weight: 700; color: var(--text-primary); padding: 5px 14px; border-radius: 4px; background: rgba(255,255,255,0.04); border: 1px solid var(--border-card); }
+        .fb-chip.in { color: var(--blue-accent); border-color: rgba(74,144,217,0.3); }
+        .fb-chip.mid { color: var(--cyan-accent); border-color: rgba(0,188,212,0.3); }
+        .fb-chip.out { color: var(--green-accent); border-color: rgba(67,160,71,0.3); }
+        .fb-arr { font-family: var(--font-mono); font-size: 16px; color: var(--accent); }
+
+        .spec-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+        .spec-cell { background: var(--bg-card-alt); border: 1px solid var(--border-card); border-radius: 8px; padding: 14px 18px; }
+        .spec-cell .sk { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); letter-spacing: 0.05em; }
+        .spec-cell .sv { font-family: var(--font-body); font-size: 17px; font-weight: 700; color: var(--text-primary); margin-top: 4px; }
+        .spec-cell .sv .u { color: var(--accent); font-family: var(--font-mono); font-size: 12px; }
+
+        /* === SLIDE 2: 4-LAYER LOOP === */
+        .layer-loop { display: grid; grid-template-columns: 1fr 30px 1fr 30px 1fr 30px 1fr; gap: 8px; align-items: stretch; }
+        .layer-card { background: var(--bg-card); border: 1.5px solid; border-radius: 10px; padding: 18px 16px; display: flex; flex-direction: column; gap: 6px; }
+        .layer-card .lc-num { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: #fff; }
+        .layer-card .lc-title { font-family: var(--font-body); font-size: 17px; font-weight: 700; }
+        .layer-card .lc-role { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
+        .layer-card .lc-point { font-family: var(--font-body); font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; }
+        .layer-card.l1 { border-color: rgba(74,144,217,0.45); } .layer-card.l1 .lc-num { background: var(--blue-accent); } .layer-card.l1 .lc-title { color: var(--blue-accent); }
+        .layer-card.l2 { border-color: rgba(123,31,162,0.45); } .layer-card.l2 .lc-num { background: var(--purple-accent); } .layer-card.l2 .lc-title { color: var(--purple-accent); }
+        .layer-card.l3 { border-color: rgba(212,168,67,0.45); } .layer-card.l3 .lc-num { background: var(--accent); } .layer-card.l3 .lc-title { color: var(--accent-bright); }
+        .layer-card.l4 { border-color: rgba(255,152,0,0.45); } .layer-card.l4 .lc-num { background: var(--orange-accent); } .layer-card.l4 .lc-title { color: var(--orange-accent); }
+        .layer-arr { display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 22px; color: var(--accent); }
+        .loop-back { text-align: center; margin-top: 8px; font-family: var(--font-mono); font-size: 12px; color: var(--accent-bright); }
+
+        .sediment-band { background: rgba(236,64,122,0.10); border: 1px dashed rgba(236,64,122,0.42); border-radius: 10px; padding: 13px 18px; display: flex; align-items: center; gap: 14px; }
+        .sediment-band .sb-label { font-family: var(--font-mono); font-size: 11px; color: #F06292; font-weight: 700; letter-spacing: 0.05em; white-space: nowrap; }
+        .sediment-band .sb-text { font-family: var(--font-body); font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+        .sediment-band .sb-text b { color: #F06292; }
+
+        .mapping-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        .map-cell { background: var(--bg-card-alt); border: 1px solid var(--border-card); border-radius: 8px; padding: 12px 14px; }
+        .map-cell .mk { font-family: var(--font-body); font-size: 13.5px; font-weight: 700; color: var(--accent-bright); }
+        .map-cell .mv { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.45; }
+
+        /* === SLIDE 3: layer-coded trajectory === */
+        .traj-step.l1::before { background: var(--blue-accent); }
+        .traj-step.l2::before { background: var(--purple-accent); }
+        .traj-step.l3::before { background: var(--accent); }
+        .traj-step.l4::before { background: var(--orange-accent); }
+        .traj-step.sed::before { background: #EC407A; }
+        .traj-badge.l1 { background: var(--blue-accent); }
+        .traj-badge.l2 { background: var(--purple-accent); }
+        .traj-badge.l3 { background: var(--accent); }
+        .traj-badge.l4 { background: var(--orange-accent); }
+        .traj-badge.sed { background: #EC407A; }
+    </style>
+</head>
+<body>
+
+<div class="progress-bar" id="progressBar"></div>
+
+<div class="deck-viewport">
+    <main class="deck-stage" id="deckStage">
+
+        <!-- ============ SLIDE 1: TITLE ============ -->
+        <section class="slide title-slide active">
+            <div class="gold-line reveal"></div>
+            <h1 class="reveal">智场<span class="accent">控制中枢</span><br>让空间会感知、会思考、会联动</h1>
+            <p class="subtitle reveal">大模型为脑 · 多源感知为感官 · 工具联动为手足 · 闭环自迭代</p>
+            <div class="date-tag reveal">DigitalFUTURES 2026 · 大舞台成果展示</div>
+            <div class="tech-stack reveal">
+                <span>Agent Harness</span><span>上下文管理</span><span>记忆 · 技能库</span><span>工具调用</span><span>自我迭代闭环</span><span>喷雾 / 扬声器 / 投影 / 机器人</span>
+            </div>
+        </section>
+
+        <!-- ============ SLIDE 2: 4-LAYER LOOP ============ -->
+        <section class="slide content-slide">
+            <div class="slide-bg-grid"></div>
+            <div class="slide-accent-line"></div>
+            <div class="slide-header reveal">
+                <h2>控制中枢 = Agent · 四层闭环</h2>
+                <div class="header-line"></div>
+                <p class="header-sub">感知采样 → 认知语义 → 同语协作 → 反馈评估 · 规律挖掘在循环之外沉淀</p>
+            </div>
+
+            <div class="reveal" style="display:flex;flex-direction:column;height:842px;justify-content:space-between;">
+                <div>
+                    <div class="layer-loop">
+                        <div class="layer-card l1">
+                            <div class="lc-num">L1</div>
+                            <div class="lc-title">感知采样</div>
+                            <div class="lc-role">29维环境 + 机器人 + 人</div>
+                            <div class="lc-point">优化点：采样<b>时间 · 频率 · 空间范围</b></div>
+                        </div>
+                        <div class="layer-arr">→</div>
+                        <div class="layer-card l2">
+                            <div class="lc-num">L2</div>
+                            <div class="lc-title">认知语义</div>
+                            <div class="lc-role">数据 → 语义（机器 + 人可读）</div>
+                            <div class="lc-point">词表/规则 ← 折线·规律挖掘 · 升级：<b>embedding → 向量 → token</b></div>
+                        </div>
+                        <div class="layer-arr">→</div>
+                        <div class="layer-card l3">
+                            <div class="lc-num">L3</div>
+                            <div class="lc-title">同语协作</div>
+                            <div class="lc-role">语义进上下文 · LLM Tool use</div>
+                            <div class="lc-point"><b>推理链 → 工具调用链 → 执行链</b> · 机器人/声光协同</div>
+                        </div>
+                        <div class="layer-arr">→</div>
+                        <div class="layer-card l4">
+                            <div class="lc-num">L4</div>
+                            <div class="lc-title">反馈评估</div>
+                            <div class="lc-role">动作是否有效</div>
+                            <div class="lc-point">人从<b>不开心 → 开心</b> · 反调 L1 / L2 / L3</div>
+                        </div>
+                    </div>
+                    <div class="loop-back">↺ L4 反馈回调 采样 / 认知 / 协作 三层</div>
+                </div>
+
+                <div class="sediment-band">
+                    <span class="sb-label">规律挖掘 · 沉淀</span>
+                    <span class="sb-text">大循环之外：场地/机器人输入 → 人的反馈 = <b>规律</b> · 反哺 L2 认知转换（基于规则/规律的语义映射）</span>
+                </div>
+
+                <div class="mapping-strip">
+                    <div class="map-cell"><div class="mk">上下文管理</div><div class="mv">L1 + L2 · 什么数据、何时进中枢</div></div>
+                    <div class="map-cell"><div class="mk">工具调用</div><div class="mv">L3 · 推理 → 检索 → 执行</div></div>
+                    <div class="map-cell"><div class="mk">记忆 · 技能库</div><div class="mv">L3 执行轨迹 · 蒸馏复用</div></div>
+                    <div class="map-cell"><div class="mk">规律挖掘</div><div class="mv">循环外沉淀 · 反哺 L2</div></div>
+                </div>
+
+                <div class="spec-strip">
+                    <div class="spec-cell"><div class="sk">端到端</div><div class="sv">&lt; 2<span class="u"> 秒</span></div></div>
+                    <div class="spec-cell"><div class="sk">联动窗口</div><div class="sv">200<span class="u"> ms 并行</span></div></div>
+                    <div class="spec-cell"><div class="sk">技能库</div><div class="sv">可复用<span class="u"> · 可迭代</span></div></div>
+                    <div class="spec-cell"><div class="sk">闭环</div><div class="sv">L4<span class="u"> → 反调三层</span></div></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ SLIDE 3: 4-LAYER AGENT TRAJECTORY ============ -->
+        <section class="slide content-slide">
+            <div class="slide-bg-grid"></div>
+            <div class="slide-accent-line"></div>
+            <div class="slide-header reveal">
+                <h2>两个场景的 Agent 轨迹链 · 四层闭环</h2>
+                <div class="header-line"></div>
+                <p class="header-sub">L1 采样 → L2 认知 → L3 推理·工具·执行 → L4 评估 · 沉淀规律</p>
+            </div>
+
+            <div class="two-col reveal" style="height: 800px;">
+                <!-- Scenario A: HEAT -->
+                <div class="scenario-col heat">
+                    <div class="sc-num">SCENARIO 01</div>
+                    <h3>热感知 · 清凉联动</h3>
+                    <p class="sc-sub">人热 → 清凉联动 · 四层闭环</p>
+                    <div class="sc-tags tag-row">
+                        <span class="tag orange">感知：热</span>
+                        <span class="tag blue">机器人 + 场地</span>
+                        <span class="tag green">喷雾 / 递水</span>
+                    </div>
+                    <div class="traj-list">
+                        <div class="traj-step l1">
+                            <div class="traj-head"><span class="traj-badge l1">L1 采样</span><span class="traj-label">多源采样</span></div>
+                            <div class="traj-detail">29维环境 + 机器人视觉/收音 + 人 · 时间/频率/空间可调</div>
+                        </div>
+                        <div class="traj-step l2">
+                            <div class="traj-head"><span class="traj-badge l2">L2 认知</span><span class="traj-label">语义转换</span></div>
+                            <div class="traj-detail">温度↑ → 词表：<b>人热 / 不开心</b> ·（升级：向量→token）</div>
+                        </div>
+                        <div class="traj-step l3">
+                            <div class="traj-head"><span class="traj-badge l3">L3 推理</span><span class="traj-label">意图生成</span></div>
+                            <div class="traj-detail">situation=<b>overheating</b> · intent=<b>cool_down</b></div>
+                        </div>
+                        <div class="traj-step l3">
+                            <div class="traj-head"><span class="traj-badge l3">L3 工具</span><span class="traj-label">检索调用</span></div>
+                            <div class="traj-detail">检索技能：<span class="tool-chip">喷雾控制</span> <span class="tool-chip">导航</span> <span class="tool-chip">递水</span></div>
+                        </div>
+                        <div class="traj-step l3">
+                            <div class="traj-head"><span class="traj-badge l3">L3 执行</span><span class="traj-label">联动输出</span></div>
+                            <div class="traj-detail">▸ <b>开喷雾</b> + 观察怎么喷<br>▸ <b>递冰矿泉水</b> · 氛围音 + 投影</div>
+                        </div>
+                        <div class="traj-step l4">
+                            <div class="traj-head"><span class="traj-badge l4">L4 评估</span><span class="traj-label">反馈评估</span></div>
+                            <div class="traj-detail">复检体温/情绪 · <b>不开心 → 开心？</b></div>
+                        </div>
+                        <div class="traj-step sed">
+                            <div class="traj-head"><span class="traj-badge sed">沉淀</span><span class="traj-label">规律挖掘</span></div>
+                            <div class="traj-detail">规律：环境与心情、动作与反应 → 反哺 L2 词表</div>
+                        </div>
+                    </div>
+                    <div class="sc-foot">
+                        <div class="io-row">
+                            <div class="io-box"><div class="ik">输入</div><div class="iv">场地多维 · 机器人收音/摄像头 · 深度相机</div></div>
+                            <div class="io-box"><div class="ik">输出</div><div class="iv">喷雾 · 扬声器 · 投影 · 机器人动作</div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scenario B: MUSIC -->
+                <div class="scenario-col music">
+                    <div class="sc-num">SCENARIO 02</div>
+                    <h3>声音鸡尾酒 · 音乐调和</h3>
+                    <p class="sc-sub">多维声音 → 混成旋律 · 四层闭环</p>
+                    <div class="sc-tags tag-row">
+                        <span class="tag purple">采集：多维声音</span>
+                        <span class="tag cyan">混音调和</span>
+                        <span class="tag green">音乐输出</span>
+                    </div>
+                    <div class="traj-list">
+                        <div class="traj-step l1">
+                            <div class="traj-head"><span class="traj-badge l1">L1 采样</span><span class="traj-label">多维采样</span></div>
+                            <div class="traj-detail">人声 · 环境声 · 密度 · 活动 · 采样频率/空间</div>
+                        </div>
+                        <div class="traj-step l2">
+                            <div class="traj-head"><span class="traj-badge l2">L2 认知</span><span class="traj-label">语义转换</span></div>
+                            <div class="traj-detail">多维声音 → 词表：<b>嘈杂 / 活跃</b> ·（升级：向量→token）</div>
+                        </div>
+                        <div class="traj-step l3">
+                            <div class="traj-head"><span class="traj-badge l3">L3 推理</span><span class="traj-label">意图生成</span></div>
+                            <div class="traj-detail">situation=<b>lively_noisy</b> · intent=<b>music_cocktail</b></div>
+                        </div>
+                        <div class="traj-step l3">
+                            <div class="traj-head"><span class="traj-badge l3">L3 工具</span><span class="traj-label">检索调用</span></div>
+                            <div class="traj-detail">检索技能：<span class="tool-chip">混音</span> <span class="tool-chip">编曲</span> <span class="tool-chip">投影</span></div>
+                        </div>
+                        <div class="traj-step l3">
+                            <div class="traj-head"><span class="traj-badge l3">L3 执行</span><span class="traj-label">联动输出</span></div>
+                            <div class="traj-detail">▸ 混音成<b>优美旋律</b><br>▸ 扬声器播放 · 投影声波可视化</div>
+                        </div>
+                        <div class="traj-step l4">
+                            <div class="traj-head"><span class="traj-badge l4">L4 评估</span><span class="traj-label">反馈评估</span></div>
+                            <div class="traj-detail">密度/情绪/共鸣 · <b>协调？优美？</b></div>
+                        </div>
+                        <div class="traj-step sed">
+                            <div class="traj-head"><span class="traj-badge sed">沉淀</span><span class="traj-label">规律挖掘</span></div>
+                            <div class="traj-detail">规律：声音与情绪 → 反哺 L2 · 场地即乐器</div>
+                        </div>
+                    </div>
+                    <div class="sc-foot">
+                        <div class="io-row">
+                            <div class="io-box"><div class="ik">输入</div><div class="iv">场地多维 · 机器人收音 · 各维度声音</div></div>
+                            <div class="io-box"><div class="ik">输出</div><div class="iv">扬声器（音乐） · 投影（可视化）</div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+</div>
+
+<div class="deck-controls">
+    <button id="prevBtn" title="Previous (←)">◀</button>
+    <span class="page-indicator" id="pageIndicator">1 / 3</span>
+    <button id="nextBtn" title="Next (→)">▶</button>
+</div>
+
+<script>
+    class SlidePresentation {
+        constructor() {
+            this.slides = document.querySelectorAll('.slide');
+            this.currentSlide = 0;
+            this.stage = document.getElementById('deckStage');
+            this.pageIndicator = document.getElementById('pageIndicator');
+            this.progressBar = document.getElementById('progressBar');
+            this.totalSlides = this.slides.length;
+            this.setupStageScale();
+            this.setupKeyboardNav();
+            this.setupTouchNav();
+            this.setupWheelNav();
+            this.setupControls();
+            this.showSlide(0);
+        }
+        setupStageScale() {
+            const scale = () => {
+                const factor = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+                const x = (window.innerWidth - 1920 * factor) / 2;
+                const y = (window.innerHeight - 1080 * factor) / 2;
+                this.stage.style.transform = `translate(${x}px, ${y}px) scale(${factor})`;
+            };
+            scale();
+            window.addEventListener('resize', scale);
+        }
+        setupKeyboardNav() {
+            document.addEventListener('keydown', (e) => {
+                if (e.target.getAttribute('contenteditable')) return;
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); this.next(); }
+                else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); this.prev(); }
+                else if (e.key === 'Home') { e.preventDefault(); this.showSlide(0); }
+                else if (e.key === 'End') { e.preventDefault(); this.showSlide(this.totalSlides - 1); }
+            });
+        }
+        setupTouchNav() {
+            let touchStartX = 0, touchStartY = 0;
+            document.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; }, { passive: true });
+            document.addEventListener('touchend', (e) => {
+                const dx = touchStartX - e.changedTouches[0].clientX;
+                const dy = touchStartY - e.changedTouches[0].clientY;
+                if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) { if (dx > 0) this.next(); else this.prev(); }
+            });
+        }
+        setupWheelNav() {
+            let wheelTimeout = null;
+            document.addEventListener('wheel', (e) => {
+                if (wheelTimeout) return;
+                wheelTimeout = setTimeout(() => { wheelTimeout = null; }, 800);
+                if (e.deltaY > 0) this.next(); else if (e.deltaY < 0) this.prev();
+            }, { passive: true });
+        }
+        setupControls() {
+            document.getElementById('prevBtn').addEventListener('click', () => this.prev());
+            document.getElementById('nextBtn').addEventListener('click', () => this.next());
+        }
+        showSlide(index) {
+            this.currentSlide = Math.max(0, Math.min(index, this.totalSlides - 1));
+            this.slides.forEach((slide, i) => {
+                slide.classList.toggle('active', i === this.currentSlide);
+                slide.classList.toggle('visible', i === this.currentSlide);
+            });
+            this.pageIndicator.textContent = `${this.currentSlide + 1} / ${this.totalSlides}`;
+            this.progressBar.style.width = `${((this.currentSlide + 1) / this.totalSlides) * 100}%`;
+        }
+        next() { this.showSlide(this.currentSlide + 1); }
+        prev() { this.showSlide(this.currentSlide - 1); }
+    }
+    const presentation = new SlidePresentation();
+</script>
+
+</body>
+</html>

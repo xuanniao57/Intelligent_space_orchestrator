@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Urban agent</title>
+  <link rel="stylesheet" href="style.css?v=20260530a">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <p class="eyebrow">Route workspace</p>
+      <h1>Urban agent</h1>
+    </div>
+    <div class="run-controls">
+      <button id="refreshButton" type="button" title="Reload route state">Refresh</button>
+      <label class="toggle"><input id="autoRefresh" type="checkbox"> Auto refresh</label>
+      <span id="dataMode">Loading state...</span>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="detail-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Selected node</p>
+          <h2 id="nodeTitle">No node selected</h2>
+        </div>
+        <span id="nodeStatus" class="status-pill">pending</span>
+      </div>
+      <div id="nodeDetail" class="detail-body"></div>
+    </aside>
+
+    <section class="tree-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Planner route tree</p>
+          <h2>choices, route state, and merge gates</h2>
+        </div>
+        <div class="tree-tools" aria-label="Route tree zoom controls">
+          <button id="zoomOut" type="button" title="Zoom out">-</button>
+          <button id="zoomFit" type="button" title="Fit tree">Fit</button>
+          <button id="zoomIn" type="button" title="Zoom in">+</button>
+          <span id="zoomValue">100%</span>
+        </div>
+        <div class="legend">
+          <span><i class="dot selected"></i>selected</span>
+          <span><i class="dot suggested"></i>candidate</span>
+          <span><i class="dot deferred"></i>deferred</span>
+          <span><i class="dot blocked"></i>blocked</span>
+          <span><i class="dot merge"></i>merge</span>
+        </div>
+      </div>
+      <div class="tree-stage">
+        <svg id="routeSvg" role="img" aria-label="Urban-Hermes route tree"></svg>
+      </div>
+    </section>
+
+    <section class="timeline-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Urban-Hermes CLI mirror</p>
+          <h2>dialogue, todo, worker-review events</h2>
+        </div>
+        <span id="artifactCount" class="status-pill">0 artifacts</span>
+      </div>
+      <div id="cliTerminal" class="cli-terminal" role="log" aria-label="CLI synchronized terminal trace"></div>
+    </section>
+
+    <section class="workflow-panel support-panel" hidden>
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Executed route</p>
+          <h2>inputs, outputs, and reviewer questions</h2>
+        </div>
+      </div>
+      <div id="workflowRail" class="workflow-rail"></div>
+    </section>
+
+    <section class="benchmark-panel support-panel" hidden>
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Ablation overview</p>
+          <h2>UrbanWorkflowBench-60</h2>
+        </div>
+        <div class="filters">
+          <label>Domain <select id="domainFilter"></select></label>
+          <label>Decision <select id="decisionFilter"></select></label>
+        </div>
+      </div>
+      <div id="conditions" class="conditions"></div>
+      <div id="taskStats" class="task-stats"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Task</th>
+              <th>Domain</th>
+              <th>Decision</th>
+              <th>Missing data</th>
+              <th>Claim boundary</th>
+            </tr>
+          </thead>
+          <tbody id="taskRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js?v=20260530a"></script>
+</body>
+</html>

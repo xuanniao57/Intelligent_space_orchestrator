@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>智场同语中枢 Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/agent-console/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">ZT</span>
+      <div>
+        <p>Agent monitor</p>
+        <h1>智场同语中枢 Agent</h1>
+      </div>
+    </div>
+    <nav class="nav-tabs" aria-label="console navigation">
+      <a href="/agent-console" class="nav-link" data-page="monitor">运行监测</a>
+      <a href="/agent-console/input-lab" class="nav-link" data-page="input-lab">输入测试</a>
+      <a href="/agent-console/output-lab" class="nav-link" data-page="output-lab">输出测试</a>
+    </nav>
+    <div class="top-actions">
+      <span id="hubStatus" class="status-pill">checking</span>
+      <span id="modelStatus" class="status-pill">model</span>
+      <span id="policyStatus" class="status-pill">policy</span>
+      <button id="refreshButton" type="button">刷新</button>
+    </div>
+  </header>
+
+  <main id="monitorPage" class="page shell">
+    <section class="sense-panel">
+      <div class="panel-head">
+        <div>
+          <p>Perception terminals</p>
+          <h2>感知语义回传</h2>
+        </div>
+        <span id="streamCount" class="mini-badge">0</span>
+      </div>
+      <div class="protocol-strip">
+        <span>SceneSemanticFrame</span>
+        <span>RobotACK</span>
+        <span>DeviceACK</span>
+      </div>
+      <div id="streamList" class="stream-list"></div>
+      <div class="operator-goal-card">
+        <div class="goal-head">
+          <div>
+            <p>Operator goal</p>
+            <h3>目标设定</h3>
+          </div>
+          <span id="goalStatus" class="mini-badge">idle</span>
+        </div>
+        <textarea id="operatorGoalText" rows="3" spellcheck="false" placeholder="例如：希望现场气氛更活跃一点"></textarea>
+        <button id="sendGoalButton" type="button" class="primary">注入目标语义</button>
+      </div>
+      <div class="world-state-card">
+        <p>World state</p>
+        <h3 id="worldStateTitle">等待场景状态</h3>
+        <div id="worldStateBody" class="world-state-summary"></div>
+      </div>
+    </section>
+
+    <section class="trajectory-panel">
+      <div class="run-summary" id="runSummary">
+        <span>Waiting for run</span>
+      </div>
+      <div id="trajectoryList" class="trajectory-list"></div>
+    </section>
+
+    <aside class="inspector-panel">
+      <div class="panel-head">
+        <div>
+          <p>Step inspector</p>
+          <h2 id="inspectorTitle">未选中步骤</h2>
+        </div>
+        <span id="inspectorBadge" class="mini-badge">idle</span>
+      </div>
+      <div id="inspectorBody" class="inspector-body"></div>
+    </aside>
+  </main>
+
+  <main id="inputLabPage" class="page lab-shell">
+    <section class="lab-panel">
+      <div class="panel-head">
+        <div>
+          <p>Input lab</p>
+          <h2>输入测试台</h2>
+        </div>
+        <span class="mini-badge">SceneSemanticFrame</span>
+      </div>
+      <div class="lab-body">
+        <div class="preset-row">
+          <button class="preset active" type="button" data-frame="heat">热感语义帧</button>
+          <button class="preset" type="button" data-frame="heat-feedback">热感反馈帧</button>
+          <button class="preset" type="button" data-frame="music">声音鸡尾酒</button>
+          <button class="preset" type="button" data-frame="music-feedback">声音反馈帧</button>
+        </div>
+        <label class="field-label" for="semanticText">测试语义</label>
+        <textarea id="semanticText" spellcheck="false" rows="4">现场温度升高，访客出现热感和轻微不适，需要清凉联动。</textarea>
+        <div class="input-actions">
+          <button id="sendTextButton" type="button" class="primary">注入测试语义帧</button>
+          <button id="runLoopButton" type="button">跑两场景闭环</button>
+        </div>
+        <details class="json-drawer">
+          <summary>协议 JSON</summary>
+          <textarea id="semanticJson" spellcheck="false"></textarea>
+          <button id="sendFrameButton" type="button">按 JSON 注入</button>
+        </details>
+      </div>
+    </section>
+
+    <section class="lab-panel result-panel">
+      <div class="panel-head">
+        <div>
+          <p>Result</p>
+          <h2>输入响应</h2>
+        </div>
+        <span id="inputResultBadge" class="mini-badge">idle</span>
+      </div>
+      <pre id="inputResult" class="result-json">{}</pre>
+    </section>
+  </main>
+
+  <main id="outputLabPage" class="page lab-shell output-lab">
+    <section class="lab-panel">
+      <div class="panel-head">
+        <div>
+          <p>Output lab</p>
+          <h2>输出测试台</h2>
+        </div>
+        <span class="mini-badge">DeviceCommand</span>
+      </div>
+      <div class="lab-body">
+        <label class="field-label" for="robotUrl">G1 假机器人地址</label>
+        <input id="robotUrl" class="text-input" value="http://127.0.0.1:8731" spellcheck="false">
+        <div class="command-grid">
+          <button type="button" data-command="spray">喷雾网关</button>
+          <button type="button" data-command="speaker">音响播放</button>
+          <button type="button" data-command="projection">投影视觉</button>
+          <button type="button" data-command="g1">G1 动作链</button>
+        </div>
+        <label class="field-label" for="outputText">自然语言动作测试</label>
+        <textarea id="outputText" spellcheck="false" rows="4">让 G1 完成安全检查，导航到冰水点，取一杯冰水，递给热感明显的访客，并播报“清凉补给已送达”。</textarea>
+        <div class="input-actions">
+          <button id="sendOutputTextButton" type="button" class="primary">让 Agent 生成动作链</button>
+          <label class="checkline">
+            <input id="autoAckOutput" type="checkbox" checked>
+            <span>测试后自动回 ACK</span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <section class="lab-panel result-panel">
+      <div class="panel-head">
+        <div>
+          <p>Result</p>
+          <h2>输出响应</h2>
+        </div>
+        <span id="outputResultBadge" class="mini-badge">idle</span>
+      </div>
+      <pre id="outputResult" class="result-json">{}</pre>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/agent-console/app.js" defer></script>
+</body>
+</html>

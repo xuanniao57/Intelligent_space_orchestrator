@@ -1,0 +1,88 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Secrets ──
+.env
+.env.*
+!.env.example
+
+# ── Generated outputs ──
+.urban-agent/
+artifacts/
+cache/
+outputs/
+results/
+case_studies/
+case_studies/**/runs/
+figures/case1_*
+figures/rdma_style_*
+figures/*_current.png
+
+# ── IDE / Editor / Agent configs ──
+.vscode/
+.idea/
+.trae/
+.claude/
+.github/
+
+# ── Third-party / large data (users download separately) ──
+CityBench/
+third_party/
+
+# ── DeGIM (separate research module, not part of core UrbanAgent) ──
+degim/
+
+# ── Paper draft (not for public repo) ──
+paper_draft/
+
+# ── Private presentation / research workflow notes ──
+ppt_first_report/
+ppt_minimax_first_report/
+docs/GBRAIN_MEMORY_LESSONS.md
+docs/GRAPHIFY_OBSIDIAN_WORKFLOW.md
+docs/URBANAGENT_EXPERIMENT_CHECKLIST.md
+
+# ── Dev-only docs / status files ──
+SESSION_STATE.md
+project_plan.md
+gpt意见.md
+DEPLOYMENT.md
+QUICK_DEPLOY.md
+
+# ── Dev utilities (not needed by users) ──
+_write_agents.py
+test_urban_agent_local.py
+scripts/utils/
+scripts/runners/run_degim.py
+scripts/runners/visualize_degim.py
+scripts/runners/run_citybench_wsl.sh
+scripts/runners/run_citybench_wsl_verbose.sh
+
+# ── Old benchmark test scripts (kept locally, not for release) ──
+scripts/benchmarks/test_*.py
+scripts/benchmarks/run_comparison_test.py
+scripts/benchmarks/summarize_20_per_task.py
+scripts/benchmarks/test_urban_agent_local.py
+
+# ── Dev-only docs ──
+docs/LITERATURE_REVIEW.md
+docs/RELEASE_CHECKLIST.md
+docs/RHINO_GRASSHOPPER_CONNECTOR_SETUP.md
+docs/plans/
+
+# ── Platform-specific requirements (not for release) ──
+requirements_citybench_windows.txt
+
+# ── Random files ──
+*.pdf
+*.log
+*.tmp
+
+# ── OS files ──
+.DS_Store
+Thumbs.db

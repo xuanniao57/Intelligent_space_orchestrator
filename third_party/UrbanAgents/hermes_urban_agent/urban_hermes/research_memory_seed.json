@@ -1,0 +1,357 @@
+[
+  {
+    "record_id": "seed_aoi_context_buffer_pattern",
+    "timestamp": "seed",
+    "memory_type": "research_design",
+    "memory_scope": "reflective",
+    "content_layer": "urban_method",
+    "domain": "spatial_scope",
+    "summary": "Many urban studies distinguish an authoritative AOI or study boundary from a larger context buffer used to collect surrounding roads, buildings, POIs, viewsheds, or spillover conditions. Treat AOI/context-buffer separation as a task-relevant research design cue, not as a universal hard rule.",
+    "triggers": ["aoi", "context buffer", "buffer", "\u7814\u7a76\u8303\u56f4", "\u5386\u53f2\u8857\u533a", "\u7a7a\u95f4\u8303\u56f4"],
+    "method_hint": "Ask or infer whether the user supplied an AOI, a context buffer, or both; label exploratory scope explicitly when the authoritative AOI is missing.",
+    "caveats": ["Do not silently substitute a context buffer for the analytic AOI.", "Buffer size should be justified by research question and domain convention."]
+  },
+  {
+    "record_id": "seed_grid_units_for_perception_models",
+    "timestamp": "seed",
+    "memory_type": "research_design",
+    "memory_scope": "reflective",
+    "content_layer": "research_design",
+    "domain": "spatial_unit_design",
+    "summary": "For studies linking historical-district built environment to subjective perception, uniform grid cells such as 200m x 200m can increase sample size and improve X/Y spatial alignment compared with one observation per district. Social-media perception signals can be aggregated to the same grid cells as built-environment indicators.",
+    "triggers": ["\u5386\u53f2\u611f", "\u4e3b\u89c2\u611f\u77e5", "social media", "\u5c0f\u7ea2\u4e66", "grid", "200m", "\u7f51\u683c", "\u5efa\u6210\u73af\u5883"],
+    "method_hint": "Consider 200m grids, street segments, or blocks; compare sensitivity across spatial units and report MAUP risks.",
+    "caveats": ["Grid size is a research design choice, not a law.", "Avoid machine learning on a few dozen district-level observations unless the design supports it."]
+  },
+  {
+    "record_id": "seed_social_media_y_alignment",
+    "timestamp": "seed",
+    "memory_type": "research_design",
+    "memory_scope": "reflective",
+    "content_layer": "research_design",
+    "domain": "variable_operationalization",
+    "summary": "When using social-media posts to represent historical-sense perception, geocode posts, align them to the chosen spatial unit and observation window, and model posting bias, visitor bias, platform demographics, duplicate posts, and text/image sentiment uncertainty.",
+    "triggers": ["\u5c0f\u7ea2\u4e66", "\u793e\u4ea4\u5a92\u4f53", "\u6e38\u5ba2", "\u5386\u53f2\u611f", "perception", "Y\u53d8\u91cf", "subjective"],
+    "method_hint": "Aggregate historical-sense labels/scores per grid or segment; keep the Y construction separate from X indicators before modeling.",
+    "caveats": ["Social-media signals are not representative surveys.", "Do not overclaim causality without design or validation."]
+  },
+  {
+    "record_id": "seed_paper_gap_variable_verifiability",
+    "timestamp": "seed",
+    "memory_type": "research_design",
+    "memory_scope": "reflective",
+    "content_layer": "research_design",
+    "domain": "paper_gap",
+    "summary": "A useful paper gap for urban-analysis agents is variable verifiability: the agent should map research questions to measurable variables, required data, spatial/temporal units, validation checks, and comparable literature choices, then flag variables that are only proxies or missing.",
+    "triggers": ["gap", "paper", "\u53d8\u91cf", "\u53ef\u9a8c\u8bc1", "\u7814\u7a76\u8bbe\u8ba1", "literature", "method"],
+    "method_hint": "Return a research design table with question, X/Y variables, data, unit, model family, validation, and risks.",
+    "caveats": ["Literature memory should guide alternatives, not force a single template."]
+  },
+  {
+    "record_id": "seed_qgis_workspace_packaging_for_spatial_reasoning",
+    "timestamp": "seed",
+    "memory_type": "workflow_pattern",
+    "memory_scope": "reflective",
+    "content_layer": "tool_artifact",
+    "domain": "gis_artifact_packaging",
+    "summary": "For GIS-heavy urban analysis, good results should be organized as a QGIS workspace rather than loose GeoJSON/CSV files: source layers, derived metric layers, styled .qgz/.qgs project, README, and an agent-readable spatial_reasoning_manifest.json. This lets humans inspect maps and later agents continue spatial reasoning from the same evidence.",
+    "triggers": ["qgis", "qgz", "qgs", "mapping", "map", "地图", "可视化", "空间推理", "manifest", "workspace", "工作台", "图层", "200m"],
+    "method_hint": "After generating GIS layers, call urban_qgis_workspace when a packager fits; otherwise author a task-specific packager with urban_host_python. Put opaque basemaps at the bottom of the QGIS layer tree, expose key metric fields, and record layer purposes and known limits in spatial_reasoning_manifest.json.",
+    "caveats": ["Do not let basemap layers cover analysis layers.", "Label proxy layers such as OSM heritage tags and road closeness as proxies, not authoritative measures.", "A manifest supports reasoning but does not replace independent data validation."]
+  },
+  {
+    "record_id": "seed_qgis_metric_mapping_validation",
+    "timestamp": "seed",
+    "memory_type": "workflow_pattern",
+    "memory_scope": "reflective",
+    "content_layer": "tool_artifact",
+    "domain": "gis_artifact_validation",
+    "summary": "Computed GIS indicators are not fully mapped merely because fields exist. For QGIS deliverables, each important metric should be represented by a named metric layer, renderer/style tied to the intended field, manifest metadata, and machine checks of value ranges, nonzero counts, style paths, project readability, basemap order, and layer validity.",
+    "triggers": ["qgis", "metric layer", "mapping", "attribute table", "zero values", "renderer", "style paths", "指标", "图层", "灰色", "字段"],
+    "method_hint": "Validate metric outputs with scripts: field exists, nonzero_count/value_range/quantiles are plausible, renderer is bound to the intended field, .qgs/.qgz read_ok, invalid_layers is empty, and manifest.metric_layers is an object array with existing style paths.",
+    "caveats": ["A gray map or all-zero attribute distribution can indicate failed joins, wrong CRS/extent, wrong source layer, or renderer not bound to the metric field.", "Artifact validation belongs to tool-artifact memory, while suspicious indicator distributions should also trigger urban-method review."]
+  },
+  {
+    "record_id": "seed_method_card_gwr",
+    "timestamp": "seed",
+    "memory_type": "method_card",
+    "memory_scope": "reflective",
+    "content_layer": "urban_method",
+    "domain": "spatial_heterogeneity_modeling",
+    "summary": "GWR/MGWR/GTWR are local association diagnostics that require aligned Y, X, spatial coordinates or geometry, and an explicit spatial bandwidth/kernel design. They can reveal spatial nonstationarity but do not by themselves identify local causal mechanisms.",
+    "triggers": ["gwr", "mgwr", "gtwr", "spatial heterogeneity", "local coefficient", "nonstationarity", "bandwidth", "kernel"],
+    "method_hint": "Before running or approving GWR, record Y, X, projected CRS/coordinates, fixed/adaptive bandwidth, bandwidth selection rule, kernel, local multicollinearity/condition-number diagnostics, residual spatial autocorrelation, and claim gates.",
+    "problem_data_algorithm": {
+      "question_types": ["spatial nonstationarity", "local association", "local model diagnostics"],
+      "required_inputs": ["Y continuous outcome by spatial unit", "X explanatory matrix aligned to Y", "projected coordinates or geometry", "spatial bandwidth", "kernel"],
+      "required_parameters": ["fixed_or_adaptive_bandwidth", "bandwidth_value_or_selection_method", "kernel", "coordinate_crs", "local_multicollinearity_threshold"],
+      "expected_artifacts": ["bandwidth_report", "local_coefficients_layer", "local_r2_layer", "condition_number_layer", "residual_diagnostics"]
+    },
+    "temporal_scope": {"meaning": "Usually cross-sectional unless GTWR or repeated time slices are explicitly designed."},
+    "spatial_scope": {"meaning": "Local results depend on spatial unit, CRS, kernel, and bandwidth; report MAUP and boundary effects."},
+    "population_scope": {"meaning": "Local coefficients are not local people preferences without direct people evidence."},
+    "caveats": ["Local coefficients are diagnostic associations, not local causal effects.", "Bandwidth choice is part of the research design and must be visible."]
+  },
+  {
+    "record_id": "seed_method_card_gwrf",
+    "timestamp": "seed",
+    "memory_type": "method_card",
+    "memory_scope": "reflective",
+    "content_layer": "urban_method",
+    "domain": "spatial_machine_learning",
+    "summary": "GWRF or geographically weighted local random forest branches require Y/X alignment, projected coordinates, a spatial bandwidth or neighborhood size, local/weighted RF design, and local prediction/importance diagnostics. They support local predictive heterogeneity, not intervention effects. Do not reuse a GWR local-coefficient rejection rule as an automatic GWRF rejection rule: local multicollinearity is a strong warning for local linear coefficient interpretation, while GWRF usually requires route-specific robustness checks for local prediction and local feature reliance before blocking.",
+    "triggers": ["gwrf", "geographically weighted random forest", "local random forest", "local feature importance", "spatial machine learning"],
+    "method_hint": "When proposing GWRF, show the neighborhood/bandwidth parameter, local sample size, RF hyperparameters, validation scheme, local feature reliance artifacts, residual diagnostics, and claim downgrade from mechanism to model behavior. If GWR reports local multicollinearity, route the GWRF branch to method_requirement_review: check local sample size, feature redundancy, variable screening, permutation-importance stability, spatial cross-validation, and residual diagnostics. Block GWRF only when required inputs, implementation, neighborhood design, or validation are missing; otherwise defer or proceed with downgraded interpretation.",
+    "problem_data_algorithm": {
+      "question_types": ["nonlinear spatial heterogeneity", "local predictive heterogeneity", "spatially varying model reliance"],
+      "required_inputs": ["Y outcome by spatial unit", "X feature matrix aligned to Y", "projected coordinates", "spatial bandwidth or k-neighbor neighborhood"],
+      "required_parameters": ["neighborhood_size_or_bandwidth", "kernel_or_weighting_rule", "rf_hyperparameters", "local_validation_scheme", "feature_screening_or_collinearity_policy", "local_importance_stability_check"],
+      "expected_artifacts": ["local_prediction_table", "local_residual_layer", "local_feature_importance_layer", "local_importance_stability_report", "branch_claim_gate"]
+    },
+    "temporal_scope": {"meaning": "If Y is a time aggregate, GWRF remains cross-sectional unless stratified or panel-like branches are designed."},
+    "spatial_scope": {"meaning": "Local RF behavior depends on neighborhood definition and sample size."},
+    "population_scope": {"meaning": "Local feature reliance is model behavior over aggregate activity proxies, not direct human preference."},
+    "source_references": [
+      {
+        "short_key": "Georganos_GRF_2019",
+        "title": "Geographical random forests: a spatial extension of the random forest algorithm to address spatial heterogeneity in remote sensing and population modelling",
+        "memory_use": "Treat GRF/GWRF as a local random-forest approach for spatial heterogeneity and local variable importance; evaluate bandwidth/neighborhood and local explanatory artifacts rather than applying GWR coefficient rules directly."
+      },
+      {
+        "short_key": "Forest_of_Forests_2022",
+        "title": "A Forest of Forests: A Spatially Weighted and Computationally Efficient Formulation of Geographical Random Forests",
+        "memory_use": "Use local/global RF formulation, bandwidth, spatial weights, and local diagnostics as GWRF-specific review requirements."
+      }
+    ],
+    "method_gate_policy": {
+      "proceed": ["Y/X/spatial coordinates are aligned", "neighborhood or bandwidth is declared", "local sample size is sufficient", "local validation and local importance artifacts are planned"],
+      "defer": ["GWRF implementation is unavailable in the current runtime", "local validation is too expensive for the current run", "feature screening is needed before fitting"],
+      "downgrade": ["features are correlated but the branch can still report local predictive behavior with stability caveats", "local importance is unstable across folds or neighborhoods"],
+      "block": ["no aligned Y/X table", "no spatial coordinates or neighborhood definition", "no feasible validation path", "privacy or minimum-count rules fail"]
+    },
+    "caveats": ["Do not call local importance a causal mechanism.", "Report the bandwidth/neighborhood before results.", "A GWR local multicollinearity warning should not by itself block GWRF; it should trigger feature screening, local importance stability review, and claim downgrade unless required inputs or implementation are absent."]
+  },
+  {
+    "record_id": "seed_method_card_temporal_stratified_regression",
+    "timestamp": "seed",
+    "memory_type": "method_card",
+    "memory_scope": "reflective",
+    "content_layer": "urban_method",
+    "domain": "temporal_urban_modeling",
+    "summary": "Aggregate urban activity data can support temporal regression branches such as weekday/weekend models, period-specific models, or grid-date-period fixed-effect designs if the time table exists. These branches clarify temporal heterogeneity but do not prove long-term dynamics or individual behavior.",
+    "triggers": ["weekday", "weekend", "morning_peak", "evening_peak", "period-specific", "temporal regression", "grid-date-period", "time split"],
+    "method_hint": "For temporal branches, declare the time split, aggregation rule, Y per split, whether X varies over time, validation scheme, and whether the branch is descriptive, stratified association, panel-like, or causal.",
+    "problem_data_algorithm": {
+      "question_types": ["temporal heterogeneity", "period-specific association", "within-week activity pattern"],
+      "required_inputs": ["grid-date-period outcome table or repeated observations", "spatial unit key", "time-invariant or time-varying X table"],
+      "required_parameters": ["time_split_rule", "aggregation_rule", "model_family", "cross_validation_grouping", "fixed_effect_choice_if_any"],
+      "expected_artifacts": ["temporal_branch_plan", "split_model_metrics", "period_comparison_table", "time_claim_gate"]
+    },
+    "temporal_scope": {"meaning": "Weekday/weekend and period-specific models are within-window temporal heterogeneity, not seasonal or long-term dynamics."},
+    "spatial_scope": {"meaning": "Keep the same spatial unit or explicitly document unit changes across time splits."},
+    "population_scope": {"meaning": "Time-split activity differences are activity-proxy patterns, not individual commuting or demographic behavior unless people evidence exists."},
+    "caveats": ["If built-environment X is time-invariant, temporal models mainly compare associations across Y splits.", "Avoid causal temporal claims without identification."]
+  },
+  {
+    "record_id": "seed_method_card_shap_pdp",
+    "timestamp": "seed",
+    "memory_type": "method_card",
+    "memory_scope": "reflective",
+    "content_layer": "urban_method",
+    "domain": "model_explainability",
+    "summary": "SHAP and PDP require a fitted model and feature matrix. They explain model behavior over observed feature support; they do not establish urban mechanisms, causal effects, or people preferences without additional design.",
+    "triggers": ["shap", "pdp", "partial dependence", "model explanation", "feature importance", "explainability"],
+    "method_hint": "Before using SHAP/PDP, identify the fitted model, global or local explanation scope, feature support, collinearity caveats, and claim downgrade from urban mechanism to model behavior.",
+    "problem_data_algorithm": {
+      "question_types": ["model explanation", "feature response visualization", "importance interpretation"],
+      "required_inputs": ["fitted model", "feature matrix X", "prediction target Y or predictions"],
+      "required_parameters": ["global_or_local_scope", "background_data_or_support", "features_to_explain", "model_version"],
+      "expected_artifacts": ["shap_summary", "shap_values_table", "pdp_curves", "explainability_claim_gate"]
+    },
+    "caveats": ["PDP feature interventions are model interventions, not real-world urban interventions.", "SHAP values explain predictions, not social mechanisms."]
+  },
+  {
+    "record_id": "seed_method_card_street_view_perception_alignment",
+    "timestamp": "seed",
+    "memory_type": "method_card",
+    "memory_scope": "reflective",
+    "content_layer": "urban_method",
+    "domain": "multimodal_urban_perception",
+    "summary": "Street-view perception branches must first inventory images, parse or load coordinates, align images to grids/segments, report coverage, and define perception features before any perception-effect claim.",
+    "triggers": ["street-view", "street view", "streetscape", "perception", "image-grid", "image alignment", "multimodal", "1k_sample"],
+    "method_hint": "For street-view data, create image_inventory, image_grid_alignment_manifest, images_per_unit coverage table, scorer/feature specification, aggregation rule, and sampling/time/viewpoint caveats before modeling.",
+    "problem_data_algorithm": {
+      "question_types": ["multimodal perception augmentation", "street-view design quality", "visual environment proxy"],
+      "required_inputs": ["street-view images", "image coordinates or sampling points", "target spatial units", "perception scorer or feature extractor"],
+      "required_parameters": ["alignment_rule", "minimum_images_per_unit", "aggregation_rule", "perception_feature_set", "missing_coverage_policy"],
+      "expected_artifacts": ["image_inventory", "image_grid_alignment_manifest", "grid_coverage_table", "perception_feature_table", "perception_claim_gate"]
+    },
+    "temporal_scope": {"meaning": "Street-view capture time may differ from LBS observation time; freshness mismatch must be declared."},
+    "spatial_scope": {"meaning": "Image coordinates must be aligned to the same grid/segment/block unit as other variables."},
+    "population_scope": {"meaning": "Perception scores are visual-environment proxies, not observed human perception unless validated by people evidence."},
+    "caveats": ["Image coverage bias can create missingness by location.", "Do not claim perception effects until features and alignment exist."]
+  },
+  {
+    "record_id": "seed_case2_vitality_outcome_operationalization",
+    "timestamp": "seed",
+    "memory_type": "research_design",
+    "memory_scope": "reflective",
+    "content_layer": "research_design",
+    "domain": "street_vitality_outcome_design",
+    "summary": "Street-vitality studies usually treat the dependent variable as a research-object choice rather than a fixed column. Plausible LBS/activity outcome branches include all-window aggregate vitality, weekday/weekend vitality contrasts, day-period vitality such as morning peak, daytime, evening peak, and night, and privacy-safe population-profile aggregation when a social-attribute table exists. These branches carry different time, space, and people meanings before any model is selected.",
+    "triggers": ["street vitality", "LBS", "activity", "dependent variable", "outcome", "weekday", "weekend", "morning peak", "evening peak", "day-period", "period-specific", "population", "education", "income", "age group", "gender", "home work"],
+    "method_hint": "At the route-tree planning gate, create separate research_object nodes for: (1) all-window aggregate activity, (2) weekday/weekend aggregate contrast, (3) day-period split, and (4) population-profile aggregation when social-attribute fields are present. Each node should state spatial unit, temporal aggregation rule, people/proxy aggregation rule, outcome transform, expected readiness artifacts, and what claim it can or cannot support. Population-profile branches must include join-key, privacy/minimum-count, sampling, and claim-boundary checks.",
+    "problem_data_algorithm": {
+      "question_types": ["street vitality drivers", "temporal heterogeneity of activity", "activity-proxy outcome construction"],
+      "required_inputs": ["aggregate activity table", "spatial unit layer", "time or period fields when temporal branches are proposed", "population/social-attribute table when people-aware branches are proposed"],
+      "required_parameters": ["spatial_unit", "temporal_split_rule", "people_aggregation_rule", "privacy_min_count", "aggregation_rule", "outcome_transform", "missing_time_policy"],
+      "expected_artifacts": ["outcome_branch_table", "outcome_distribution_map", "weekday_weekend_profile", "day_period_profile", "population_profile_coverage_table", "data_role_audit"]
+    },
+    "source_memory": ["CASE2_LIT_01", "CASE2_LIT_03", "CASE2_LIT_04", "CASE2_LIT_05", "CASE2_LIT_07", "seed_method_card_temporal_stratified_regression"],
+    "temporal_scope": {"meaning": "All-window, weekday/weekend, and day-period outcomes test different within-window temporal meanings and should not be collapsed without a recorded choice."},
+    "spatial_scope": {"meaning": "Changing temporal outcome does not remove the need to keep a declared spatial unit or compare spatial-unit sensitivity separately."},
+    "population_scope": {"meaning": "LBS activity remains an aggregate device-user proxy unless a population-profile branch safely aggregates social attributes. Even then, claims concern sampled-device group composition, not census population or individual behavior."},
+    "caveats": ["Do not let a model route decide the outcome branch after fitting.", "Time splits require supporting time fields in the data canvas.", "People-aware branches require reviewed joins, privacy suppression, and sampling caveats before any social-group claim."]
+  },
+  {
+    "record_id": "seed_case2_vitality_feature_package_design",
+    "timestamp": "seed",
+    "memory_type": "research_design",
+    "memory_scope": "reflective",
+    "content_layer": "research_design",
+    "domain": "street_vitality_feature_package_design",
+    "summary": "Street-vitality workflows usually compare several explanatory-variable packages: built-form intensity, functional or activity-opportunity mix, street-network/accessibility exposure, street-view alignment/readiness, and extracted perception or semantic features. These are feature-package choices, not model choices, and each package changes the interpretation of people, space, and method requirements.",
+    "triggers": ["street vitality", "built environment", "feature package", "explanatory variables", "POI", "road density", "accessibility", "street-view", "perception", "multimodal"],
+    "method_hint": "At the route-tree planning gate, create feature_package nodes that explicitly list variables and data requirements. For a prepared canvas, at minimum separate built-form/land-use baseline variables, activity-opportunity variables such as POI and road indicators, optional accessibility/connectivity variables, street-view coverage/alignment, and perception-feature branches if extracted scores exist.",
+    "problem_data_algorithm": {
+      "question_types": ["built-environment association", "multimodal vitality modeling", "variable operationalization"],
+      "required_inputs": ["model-ready grid metrics", "building indicators", "POI indicators", "road indicators", "optional accessibility/connectivity outputs", "optional street-view image alignment and perception scores"],
+      "required_parameters": ["feature_group", "alignment_key", "coverage_threshold", "collinearity_check", "proxy_claim_boundary"],
+      "expected_artifacts": ["variable_role_audit", "feature_coverage_map", "feature_correlation_matrix", "VIF_table", "image_grid_alignment_manifest", "feature_package_claim_gate"]
+    },
+    "source_memory": ["CASE2_LIT_01", "CASE2_LIT_02", "CASE2_LIT_03", "CASE2_LIT_04", "CASE2_LIT_05", "CASE2_LIT_06", "CASE2_LIT_08", "CASE2_LIT_09", "CASE2_LIT_10", "seed_method_card_street_view_perception_alignment"],
+    "temporal_scope": {"meaning": "Most built-environment X variables are static snapshots; temporal outcome branches compare changing Y against largely time-invariant X unless time-varying X is supplied."},
+    "spatial_scope": {"meaning": "Feature packages must be aligned to the selected spatial unit before modeling; accessibility and street-view branches require their own alignment or coverage artifacts."},
+    "population_scope": {"meaning": "Built-environment variables are environmental exposure or opportunity proxies; street-view scores are visual-environment proxies, not direct people preferences unless validated."},
+    "caveats": ["Do not treat street-view image availability as a perception effect.", "Do not interpret correlated built-environment variables as independent causal effects without design support."]
+  },
+  {
+    "record_id": "seed_research_design_analysis_route_comparison",
+    "timestamp": "seed",
+    "memory_type": "research_design",
+    "memory_scope": "reflective",
+    "content_layer": "research_design",
+    "domain": "analysis_route_comparison",
+    "summary": "When an urban workflow has several completed analysis routes for the same question, the planner should compare their evidence before final claims. The comparison should ask whether a candidate explanation is supported globally, stable across time splits, spatially local or general, and valid under available people/data proxies.",
+    "triggers": ["branch comparison", "claim synthesis", "claim calibration", "analysis route", "evidence comparison", "final claim"],
+    "method_hint": "Build a table with one row per candidate variable or explanation and columns for global model evidence, temporal stability, spatial heterogeneity, model-explanation evidence, data/people limits, and final wording level.",
+    "problem_data_algorithm": {
+      "question_types": ["claim calibration", "branch result comparison", "research conclusion synthesis"],
+      "required_inputs": ["completed branch outputs", "branch reviews", "claim gates", "data contract"],
+      "required_parameters": ["comparison_unit", "decision_levels", "claim_wording_rule"],
+      "expected_artifacts": ["branch_comparison_table", "claim_synthesis_json", "final_claim_gate"]
+    },
+    "temporal_scope": {"meaning": "A stable claim should state whether it holds across tested time splits or only under a specific temporal window."},
+    "spatial_scope": {"meaning": "A stable claim should state whether it is global, local, or sensitive to the chosen spatial unit and bandwidth."},
+    "population_scope": {"meaning": "A stable claim should not turn aggregate activity or visual proxies into individual behavior, demographic, or preference claims."},
+    "caveats": ["Do not average incompatible branch outputs into a single score without preserving their assumptions.", "Use plain decision levels such as stable support, conditional support, insufficient interpretation, or unsupported."]
+  },
+  {
+    "record_id": "seed_research_design_typed_route_tree",
+    "timestamp": "seed",
+    "memory_type": "research_design",
+    "memory_scope": "reflective",
+    "content_layer": "research_design",
+    "domain": "typed_research_route_tree",
+    "summary": "Exploratory urban-analysis plans should be represented as typed research-route trees rather than flat method menus. Separate research-object definitions, feature packages, model execution, model explanation, diagnostics, and claim synthesis so the planner can review dependencies and avoid putting different levels side by side.",
+    "triggers": ["route tree", "branch tree", "research design", "workflow design", "planner review", "typed node", "dependency", "model route", "claim synthesis"],
+    "method_hint": "Use node types: research_object, feature_package, data_preparation, model_execution, model_explanation, diagnostic, claim_synthesis. Each node should state parent_nodes, requires, expected outputs, time-space-people meaning, claim boundary, status, and human choice.",
+    "problem_data_algorithm": {
+      "question_types": ["research workflow planning", "branch dependency design", "human-in-the-loop route selection"],
+      "required_inputs": ["research question", "data contract", "research-design memory", "method cards when a concrete method is proposed"],
+      "required_parameters": ["node_type_schema", "dependency_rule", "human_choice_rule", "allowed_child_nodes"],
+      "expected_artifacts": ["typed_route_tree", "dependency_review", "human_route_decisions"]
+    },
+    "route_order_pattern": [
+      "research_object: compound spatial unit + temporal design + outcome meaning",
+      "feature_package: X-variable group and data-preparation dependencies",
+      "model_execution: fitted model requiring one outcome design and one feature package",
+      "model_explanation: SHAP/PDP/importance/local maps depending on a fitted model",
+      "diagnostic: residual, bandwidth, temporal autocorrelation, or artifact checks depending on a fitted model or artifact",
+      "claim_synthesis: comparison of completed route outputs and reviews"
+    ],
+    "dependency_examples": [
+      "SHAP/PDP requires a fitted RF, GBDT, or GWRF-style model and should not be a peer of GWR.",
+      "GWR/GWRF requires aligned Y/X, projected coordinates, spatial bandwidth or neighborhood, and kernel/weighting rule.",
+      "Street-view alignment is a data-preparation node; perception-effect claims require extracted perception features and aggregation rules.",
+      "A time-split outcome such as weekday/weekend or day-period should be defined before period-specific models are planned."
+    ],
+    "temporal_scope": {"meaning": "Temporal branches should be declared in the research_object node before models are attached."},
+    "spatial_scope": {"meaning": "Spatial unit choices should be declared in the research_object node before feature and model nodes are attached."},
+    "population_scope": {"meaning": "People interpretation belongs to every node's claim boundary and should not be inferred from proxy data alone."},
+    "caveats": ["The tree can include suggested or deferred nodes, but active execution should only use approved dependencies.", "Capability lists and method names should not silently create route nodes without data-contract support."]
+  },
+  {
+    "record_id": "seed_street_vitality_compound_time_space_people_outcomes",
+    "timestamp": "seed",
+    "memory_type": "research_design",
+    "memory_scope": "reflective",
+    "content_layer": "research_design",
+    "domain": "street_vitality_outcome_design",
+    "summary": "For LBS-based street-vitality studies, the dependent variable should be offered as compound time-space-people research-object options. A route option should combine a spatial aggregation unit, a temporal aggregation or split, and a privacy-safe people grouping such as age cohort, rather than listing time, space, and people as disconnected choices.",
+    "triggers": ["street vitality", "LBS", "population profile", "age group", "age cohort", "weekday weekend", "hexagon", "grid", "people-aware outcome", "time-space-people"],
+    "method_hint": "When population/social-attribute fields exist, propose several compound research_object nodes, for example: (1) 500m grid + weekday/weekend split + age cohorts such as child/teen, young adult, middle-aged, older adult; (2) 500m grid + day-period split such as morning peak/daytime/evening peak/night + 10-year age bands; (3) 250m or 300m hexagon sensitivity + weekday/weekend or day-period split + coarse age cohorts. Each option must state join key, privacy minimum count, sampling caveat, and whether it supports group-specific aggregate activity patterns only.",
+    "problem_data_algorithm": {
+      "question_types": ["people-aware street-vitality outcome construction", "age-stratified activity pattern", "spatial-temporal sensitivity design"],
+      "required_inputs": ["LBS stay records or aggregate table with spatial unit/time fields", "population/social-attribute table with age or age-band field", "spatial unit layer or rule for grid/hexagon generation", "join key or documented aggregation key"],
+      "required_parameters": ["spatial_aggregation_unit", "temporal_split_rule", "age_group_rule", "privacy_min_count", "outcome_transform", "missing_or_suppressed_cell_policy"],
+      "expected_artifacts": ["research_object_option_table", "age_profile_coverage_table", "time_space_people_data_role_audit", "selected_outcome_distribution_map", "temporal_age_profile_plot"]
+    },
+    "temporal_scope": {"meaning": "Weekday/weekend and day-period splits describe within-observation-window variation; they do not by themselves prove seasonal or long-term dynamics."},
+    "spatial_scope": {"meaning": "Grid and hexagon units are design choices with MAUP and edge effects; hexagon branches are useful sensitivity checks only if data can be reaggregated or already include coordinates."},
+    "population_scope": {"meaning": "Age groups from a population/profile table describe sampled device-user groups after privacy-safe aggregation, not individual trajectories or census population."},
+    "caveats": ["Do not activate an age-stratified branch unless the age field and join/aggregation key are actually available.", "Suppress or downgrade group-specific claims when counts are small, raw joins are unavailable, or sampling bias is unknown.", "Use age-grouped outcomes as research-object branches; do not treat age grouping as a standalone feature unrelated to the spatial and temporal design."]
+  },
+  {
+    "record_id": "seed_lbs_uuid_sampling_for_experiment_canvas",
+    "timestamp": "seed",
+    "memory_type": "research_design",
+    "memory_scope": "reflective",
+    "content_layer": "research_design",
+    "domain": "large_lbs_data_sampling",
+    "summary": "When raw LBS trajectory or stay records are too large for an interactive urban-analysis experiment, the preferred reduced data canvas should sample users, not rows. Draw a reproducible UUID sample first, then retain all records for sampled UUIDs within the study window or AOI before spatial, temporal, and people-aware aggregation. This preserves within-person temporal patterns better than stay-row sampling and makes people-group branches more interpretable.",
+    "triggers": ["LBS", "uuid", "large trajectory data", "sample", "sampling", "10%", "population profile", "age group", "interactive experiment", "data canvas"],
+    "method_hint": "For a paper-facing or interactive run, propose a uuid_sample_rate such as 10% with random_seed, save sampled_uuid_list, sample_manifest, raw-to-sample coverage checks, and privacy/min-count rules. Use sampled records to build the experiment data canvas, and mark all claims as sample-conditional unless full-data aggregation is later approved.",
+    "problem_data_algorithm": {
+      "question_types": ["large-scale LBS preprocessing", "people-aware activity aggregation", "interactive experiment data canvas"],
+      "required_inputs": ["raw LBS records with uuid", "population/profile table keyed by uuid when people grouping is needed", "AOI or spatial filter", "study window"],
+      "required_parameters": ["uuid_sample_rate", "random_seed", "sample_frame", "aoi_filter", "time_window", "privacy_min_count", "coverage_diagnostics"],
+      "expected_artifacts": ["sampled_uuid_list", "sample_manifest", "sampled_lbs_canvas", "profile_join_coverage_table", "sample_bias_caveat", "privacy_suppression_report"]
+    },
+    "temporal_scope": {"meaning": "Sampling users before records preserves the sampled users' within-window trajectories, but it still does not prove long-term dynamics."},
+    "spatial_scope": {"meaning": "The sampled canvas should report AOI coverage and spatial-unit coverage; sparse areas may need suppression or downgrade."},
+    "population_scope": {"meaning": "A UUID sample is a sample of observed device users, not the full population. Age or education branches remain sample-conditional unless validated against external population data."},
+    "caveats": ["Do not sample stay rows when the research branch concerns people groups or repeated behavior.", "Do not present a UUID sample as a full-data result.", "Store the sampling seed and sampled UUID list so the experiment is reproducible."]
+  },
+  {
+    "record_id": "seed_multiselect_route_tree_combinatorial_comparison",
+    "timestamp": "seed",
+    "memory_type": "research_design",
+    "memory_scope": "reflective",
+    "content_layer": "research_design",
+    "domain": "route_tree_multi_select_and_merge",
+    "summary": "For exploratory urban research, a human analyst may select multiple route options at a stage, not only one. The planner should treat selected nodes as an executable route set, candidate nodes as visible alternatives, deferred nodes as parked options, and blocked nodes as invalid under the current data contract. Downstream model routes are generated from declared dependencies, and comparison/merge nodes synthesize completed routes rather than erasing their assumptions.",
+    "triggers": ["multi-select", "multiple routes", "route comparison", "merge", "candidate", "defer", "block", "combinatorial", "16 routes", "human choice"],
+    "method_hint": "When a stage has multiple approved options, enumerate the route combinations implied by dependencies, estimate feasibility/cost, and ask the analyst to approve an execution budget. For example, 2 outcome branches x 2 feature packages x 4 model families creates 16 candidate routes. Execute a reviewed subset or all routes if budget allows; then compare route-level evidence in a merge node before final claims.",
+    "problem_data_algorithm": {
+      "question_types": ["exploratory branch selection", "model comparison", "route merge", "human-in-the-loop research design"],
+      "required_inputs": ["typed route tree", "node dependencies", "human choices", "execution budget", "method requirement cards"],
+      "required_parameters": ["selected_nodes", "candidate_nodes", "deferred_nodes", "blocked_nodes", "route_combination_rule", "budget_rule", "merge_comparison_schema"],
+      "expected_artifacts": ["route_combination_table", "human_choice_log", "route_cost_estimate", "route_comparison_table", "merge_review", "claim_synthesis"]
+    },
+    "temporal_scope": {"meaning": "Temporal outcome branches should remain distinct in route comparison so temporal claims are not collapsed into one global conclusion."},
+    "spatial_scope": {"meaning": "Spatial-unit branches such as 200m grid, 500m grid, or hexagon sensitivity should be compared as scale assumptions, not treated as interchangeable outputs."},
+    "population_scope": {"meaning": "People-aware branches should compare group-conditioned aggregate evidence while preserving sample and privacy caveats."},
+    "caveats": ["Do not create cross-layer shortcuts that connect an outcome node directly to a model explanation unless intervening feature and model dependencies are explicit.", "A merge node compares evidence; it does not average incompatible assumptions into one result.", "If route count is large, ask for budget approval or run a sampled pilot."]
+  }
+]

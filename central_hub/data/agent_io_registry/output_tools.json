@@ -1,0 +1,298 @@
+{
+  "schema_version": "zhichang_tongyu_output_tools.v1",
+  "description": "Editable output tool registry for the output lab. Robot SDK steps can be compiled into one g1.unitree_sdk_sequence command.",
+  "categories": [
+    { "id": "unitree_sdk", "label": "语数 G1 SDK 动作" },
+    { "id": "unitree_sequence", "label": "语数 G1 完整动作链" },
+    { "id": "spray", "label": "喷雾网关" },
+    { "id": "speaker", "label": "音响网关" },
+    { "id": "projection", "label": "投影网关" }
+  ],
+  "actions": [
+    {
+      "id": "g1_safety_check",
+      "category": "unitree_sdk",
+      "label": "安全预检查",
+      "description": "检查调试模式、人距、限速和急停状态。",
+      "target_id": "unitree_g1",
+      "target_type": "robot",
+      "space_id": "cooling_zone_01",
+      "sdk_binding": {
+        "official_sdk": false,
+        "binding_type": "hub_bridge_guard",
+        "note": "SafetyGuard is a Tongyu bridge guard before calling Unitree SDK2."
+      },
+      "sdk_step": {
+        "primitive": "unitree_sdk_call",
+        "source_primitive": "safety_check",
+        "layer": "bridge",
+        "client": "SafetyGuard",
+        "method": "CheckPreconditions",
+        "args": { "dry_run": true, "min_human_distance_m": 0.8, "speed_limit_mps": 0.25 }
+      }
+    },
+    {
+      "id": "g1_speak_notice",
+      "category": "unitree_sdk",
+      "label": "语音播报意图",
+      "description": "G1 在动作前播报当前行动意图。",
+      "target_id": "unitree_g1",
+      "target_type": "robot",
+      "space_id": "cooling_zone_01",
+      "sdk_binding": {
+        "official_sdk": true,
+        "binding_type": "unitree_sdk2_g1_audio",
+        "official_client": "unitree::robot::g1::AudioClient",
+        "official_method": "TtsMaker"
+      },
+      "sdk_step": {
+        "primitive": "unitree_sdk_call",
+        "source_primitive": "speak",
+        "layer": "onboard_io",
+        "client": "AudioClient",
+        "method": "TtsMaker",
+        "args": { "text_cn": "检测到热感上升，我将启动清凉联动并递送冰水。", "speaker_id": 0 }
+      }
+    },
+    {
+      "id": "g1_move_probe",
+      "category": "unitree_sdk",
+      "label": "短程动作探针",
+      "description": "用于校园网和 SDK 桥接测试的短程 dry-run 动作。",
+      "target_id": "unitree_g1",
+      "target_type": "robot",
+      "space_id": "cooling_zone_01",
+      "sdk_binding": {
+        "official_sdk": true,
+        "binding_type": "unitree_sdk2_g1_loco",
+        "official_client": "unitree::robot::g1::LocoClient",
+        "official_method": "SetVelocity"
+      },
+      "sdk_step": {
+        "primitive": "unitree_sdk_call",
+        "source_primitive": "move_probe",
+        "layer": "unitree_high_level",
+        "client": "LocoClient",
+        "method": "SetVelocity",
+        "args": { "vx": 0.15, "vy": 0, "omega": 0, "duration": 1.2, "dry_run_only": true }
+      }
+    },
+    {
+      "id": "g1_navigate_water_station",
+      "category": "unitree_sdk",
+      "label": "导航至冰水点",
+      "description": "向预设冰水补给点移动。",
+      "target_id": "unitree_g1",
+      "target_type": "robot",
+      "space_id": "cooling_zone_01",
+      "sdk_binding": {
+        "official_sdk": false,
+        "binding_type": "hub_bridge_navigation",
+        "note": "Unitree G1 SDK2 exposes LocoClient velocity/task APIs, not a native MoveByWaypoint API. The bridge must translate waypoint intent into safe LocoClient calls or ROS2 navigation."
+      },
+      "sdk_step": {
+        "primitive": "unitree_sdk_call",
+        "source_primitive": "navigate",
+        "layer": "bridge",
+        "client": "WaypointPlanner",
+        "method": "PlanThenLocoSetVelocity",
+        "args": { "waypoint": "ice_water_station", "output_client": "LocoClient", "output_method": "SetVelocity", "dry_run_only": true }
+      }
+    },
+    {
+      "id": "g1_deliver_ice_water",
+      "category": "unitree_sdk",
+      "label": "递送冰水",
+      "description": "触发冰水补给适配器与递送意图。",
+      "target_id": "unitree_g1",
+      "target_type": "robot",
+      "space_id": "cooling_zone_01",
+      "sdk_binding": {
+        "official_sdk": false,
+        "binding_type": "site_tool_adapter",
+        "note": "WaterStationAdapter is a Tongyu scene/device adapter, not a Unitree SDK2 class."
+      },
+      "sdk_step": {
+        "primitive": "unitree_sdk_call",
+        "source_primitive": "deliver_ice_water",
+        "layer": "station_tool",
+        "client": "WaterStationAdapter",
+        "method": "DeliverItem",
+        "args": { "item": "iced_bottled_water", "handoff_zone": "cooling_handoff_01", "dry_run_only": true }
+      }
+    },
+    {
+      "id": "g1_report_ready",
+      "category": "unitree_sdk",
+      "label": "回报完成",
+      "description": "向中枢 ACK 回路报告动作完成。",
+      "target_id": "unitree_g1",
+      "target_type": "robot",
+      "space_id": "cooling_zone_01",
+      "sdk_binding": {
+        "official_sdk": false,
+        "binding_type": "hub_feedback_adapter",
+        "note": "FeedbackAdapter is the Tongyu ACK bridge; it posts RobotACK back to the central hub."
+      },
+      "sdk_step": {
+        "primitive": "unitree_sdk_call",
+        "source_primitive": "report_ready",
+        "layer": "feedback",
+        "client": "FeedbackAdapter",
+        "method": "ReportReady",
+        "args": { "status": "ready" }
+      }
+    },
+    {
+      "id": "g1_heat_delivery_sequence",
+      "category": "unitree_sequence",
+      "label": "热感冰水递送链",
+      "description": "清凉联动的完整 dry-run 动作链。",
+      "target_id": "unitree_g1",
+      "target_type": "robot",
+      "space_id": "cooling_zone_01",
+      "scenario_id": "heat_cooling_loop",
+      "timeout_ms": 60000,
+      "command": {
+        "type": "g1.unitree_sdk_sequence",
+        "params": {
+          "task_id": "manual_heat_delivery",
+          "scene_id": "heat_cooling_loop",
+          "speech_cn": "清凉补给已送达。",
+          "safety": { "dry_run": true, "speed_limit_mps": 0.25, "min_human_distance_m": 0.8 },
+          "sdk_sequence": [
+            { "primitive": "unitree_sdk_call", "source_primitive": "safety_check", "layer": "bridge", "client": "SafetyGuard", "method": "CheckPreconditions", "args": { "dry_run": true, "min_human_distance_m": 0.8 } },
+            { "primitive": "unitree_sdk_call", "source_primitive": "speak", "layer": "onboard_io", "client": "AudioClient", "method": "TtsMaker", "args": { "text_cn": "检测到热感上升，我将递送冰水。", "speaker_id": 0 } },
+            { "primitive": "unitree_sdk_call", "source_primitive": "deliver_ice_water", "layer": "station_tool", "client": "WaterStationAdapter", "method": "DeliverItem", "args": { "item": "iced_bottled_water", "dry_run_only": true } },
+            { "primitive": "unitree_sdk_call", "source_primitive": "report_ready", "layer": "feedback", "client": "FeedbackAdapter", "method": "ReportReady", "args": { "status": "ready" } }
+          ]
+        }
+      }
+    },
+    {
+      "id": "spray_mist_cooling",
+      "category": "spray",
+      "label": "开启清凉喷雾",
+      "description": "在清凉区打开喷雾。",
+      "target_id": "spray_gateway",
+      "target_type": "spray_gateway",
+      "space_id": "cooling_zone_01",
+      "command": {
+        "type": "spray.scene",
+        "params": { "task_id": "manual_spray_mist", "op": "mist", "zone": "cooling_zone_01", "duration_sec": 20, "intensity": 0.45 }
+      }
+    },
+    {
+      "id": "spray_stop",
+      "category": "spray",
+      "label": "停止喷雾",
+      "description": "停止喷雾网关输出。",
+      "target_id": "spray_gateway",
+      "target_type": "spray_gateway",
+      "space_id": "cooling_zone_01",
+      "command": {
+        "type": "spray.stop",
+        "params": { "task_id": "manual_spray_stop", "op": "stop", "zone": "cooling_zone_01" }
+      }
+    },
+    {
+      "id": "speaker_play_cocktail_01",
+      "category": "speaker",
+      "label": "播放 1 号音乐",
+      "description": "播放音乐鸡尾酒循环音频。",
+      "target_id": "speaker_gateway",
+      "target_type": "speaker_gateway",
+      "space_id": "sound_cocktail_zone_01",
+      "scenario_id": "music_cocktail_loop",
+      "command": {
+        "type": "speaker.play",
+        "params": { "task_id": "manual_audio_01", "op": "play", "content_id": "audio_01_music_cocktail_loop", "slot": 1, "volume": 0.62, "loop": true }
+      }
+    },
+    {
+      "id": "speaker_play_cooling_notice_02",
+      "category": "speaker",
+      "label": "播放 2 号提示音",
+      "description": "播放清凉联动提示音。",
+      "target_id": "speaker_gateway",
+      "target_type": "speaker_gateway",
+      "space_id": "cooling_zone_01",
+      "scenario_id": "heat_cooling_loop",
+      "command": {
+        "type": "speaker.play",
+        "params": { "task_id": "manual_audio_02", "op": "play", "content_id": "audio_02_cooling_notice", "slot": 2, "volume": 0.58, "loop": false }
+      }
+    },
+    {
+      "id": "speaker_stop",
+      "category": "speaker",
+      "label": "停止音响",
+      "description": "停止音响播放。",
+      "target_id": "speaker_gateway",
+      "target_type": "speaker_gateway",
+      "space_id": "sound_cocktail_zone_01",
+      "command": {
+        "type": "speaker.stop",
+        "params": { "task_id": "manual_speaker_stop", "op": "stop" }
+      }
+    },
+    {
+      "id": "projection_play_sound_wave_01",
+      "category": "projection",
+      "label": "播放 1 号投影",
+      "description": "投射声波鸡尾酒视觉。",
+      "target_id": "projection_gateway",
+      "target_type": "projection_gateway",
+      "space_id": "sound_cocktail_zone_01",
+      "scenario_id": "music_cocktail_loop",
+      "command": {
+        "type": "projection.play",
+        "params": { "task_id": "manual_video_01", "op": "play", "content_id": "video_01_sound_wave_visual", "slot": 1, "loop": true }
+      }
+    },
+    {
+      "id": "projection_play_cooling_02",
+      "category": "projection",
+      "label": "播放 2 号投影",
+      "description": "投射清凉水波视觉。",
+      "target_id": "projection_gateway",
+      "target_type": "projection_gateway",
+      "space_id": "cooling_zone_01",
+      "scenario_id": "heat_cooling_loop",
+      "command": {
+        "type": "projection.play",
+        "params": { "task_id": "manual_video_02", "op": "play", "content_id": "video_02_ice_water_ripple", "slot": 2, "loop": false }
+      }
+    },
+    {
+      "id": "projection_stop",
+      "category": "projection",
+      "label": "停止投影",
+      "description": "停止投影播放。",
+      "target_id": "projection_gateway",
+      "target_type": "projection_gateway",
+      "space_id": "sound_cocktail_zone_01",
+      "command": {
+        "type": "projection.stop",
+        "params": { "task_id": "manual_projection_stop", "op": "stop" }
+      }
+    }
+  ],
+  "presets": [
+    {
+      "id": "cooling_device_chain",
+      "label": "清凉设备联动链",
+      "action_ids": ["spray_mist_cooling", "speaker_play_cooling_notice_02", "projection_play_cooling_02", "g1_heat_delivery_sequence"]
+    },
+    {
+      "id": "music_projection_chain",
+      "label": "音乐鸡尾酒联动链",
+      "action_ids": ["speaker_play_cocktail_01", "projection_play_sound_wave_01"]
+    },
+    {
+      "id": "g1_sdk_basic_chain",
+      "label": "G1 SDK 基础测试链",
+      "action_ids": ["g1_safety_check", "g1_speak_notice", "g1_move_probe", "g1_report_ready"]
+    }
+  ]
+}

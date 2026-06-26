@@ -1,0 +1,3 @@
+recursive-include hermes_urban_agent/urban_hermes/_vendor/hermes_runtime *
+include hermes_urban_agent/urban_hermes/research_memory_seed.json
+include hermes_urban_agent/urban_hermes/urban_skill_prompt.md

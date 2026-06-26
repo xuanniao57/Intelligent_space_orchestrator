@@ -1,0 +1,191 @@
+{
+  "schema_version": "zhichang_tongyu_input_semantics.v1",
+  "description": "Editable semantic units for assembling SceneSemanticFrame world states in the input lab.",
+  "semantic_layers": [
+    { "id": "L1_sampling", "label": "L1 采样", "description": "单个终端观测或低层语义信号。" },
+    { "id": "L2_recognition", "label": "L2 认知", "description": "识别出的状态、情绪、环境或人群条件。" },
+    { "id": "L3_intent", "label": "L3 意图", "description": "场景意图、行动机会或可供性。" },
+    { "id": "L4_feedback", "label": "L4 反馈", "description": "ACK、效果评估和动作后的观测。" }
+  ],
+  "sources": [
+    { "id": "thermal_grid_01", "label": "thermal grid", "modality": "temperature" },
+    { "id": "ambient_mic_array", "label": "ambient mic array", "modality": "audio" },
+    { "id": "g1_rgb_camera", "label": "G1 RGB camera", "modality": "rgb" },
+    { "id": "g1_depth_camera", "label": "G1 depth camera", "modality": "depth" },
+    { "id": "g1_microphone", "label": "G1 microphone", "modality": "audio" },
+    { "id": "g1_ack_perception", "label": "G1 ACK perception", "modality": "ack" },
+    { "id": "gateway_ack", "label": "device gateway ACK", "modality": "ack" }
+  ],
+  "items": [
+    {
+      "id": "heat_temperature_high",
+      "label": "温度偏高",
+      "layer": "L1_sampling",
+      "source_id": "thermal_grid_01",
+      "space_id": "cooling_zone_01",
+      "summary": "局部温度高于舒适阈值。",
+      "tags": ["hot", "environment:hot"],
+      "priority": 0.62,
+      "confidence": 0.9,
+      "semantics": {
+        "environment": { "label": "hot", "level": "warning", "values": { "temperature_c": 33.6, "humidity": 0.52 }, "tags": ["hot"] }
+      },
+      "raw_refs": [{ "terminal_id": "thermal_grid_01", "modality": "temperature", "sample_rate_hz": 1 }]
+    },
+    {
+      "id": "heat_crowd_dense",
+      "label": "人群密度预警",
+      "layer": "L2_recognition",
+      "source_id": "g1_depth_camera",
+      "space_id": "cooling_zone_01",
+      "summary": "清凉区访客密度上升，需要关注局部拥挤。",
+      "tags": ["crowded", "crowd:watch"],
+      "priority": 0.58,
+      "confidence": 0.82,
+      "semantics": {
+        "crowd": { "label": "crowded", "level": "watch", "values": { "density": 0.74, "person_count": 18 }, "tags": ["crowded"] }
+      },
+      "entities": [{ "id": "visitor_group_01", "type": "person_group", "zone": "cooling_zone_01", "attributes": { "density_watch": true } }],
+      "raw_refs": [{ "terminal_id": "g1_depth_camera", "modality": "depth" }]
+    },
+    {
+      "id": "heat_rgb_gesture",
+      "label": "热感动作识别",
+      "layer": "L2_recognition",
+      "source_id": "g1_rgb_camera",
+      "space_id": "cooling_zone_01",
+      "summary": "多名访客出现轻微热不适动作。",
+      "tags": ["human_hot", "emotion:uncomfortable"],
+      "priority": 0.7,
+      "confidence": 0.78,
+      "semantics": {
+        "emotion": { "label": "uncomfortable", "level": "watch", "values": { "negative_ratio": 0.31 }, "tags": ["mood_unhappy"] }
+      },
+      "events": [{ "type": "thermal_discomfort_detected", "confidence": 0.78 }],
+      "raw_refs": [{ "terminal_id": "g1_rgb_camera", "modality": "rgb" }]
+    },
+    {
+      "id": "heat_request_cooling",
+      "label": "清凉联动意图",
+      "layer": "L3_intent",
+      "source_id": "semantic_fusion",
+      "space_id": "cooling_zone_01",
+      "situation_id": "heat_cooling_loop",
+      "intent_hint": "cooling_request",
+      "summary": "当前世界状态应触发喷雾、冰水和提示的清凉联动。",
+      "tags": ["cooling_request", "heat_cooling_loop"],
+      "priority": 0.76,
+      "confidence": 0.86,
+      "affordances": [
+        { "action": "spray_mist", "target_zone": "cooling_zone_01" },
+        { "action": "deliver_ice_water", "target_zone": "cooling_handoff_01" }
+      ],
+      "safety": { "level": "normal", "robot_speed_limit_mps": 0.25, "dry_run": true }
+    },
+    {
+      "id": "heat_feedback_cooling_effect",
+      "label": "清凉效果确认",
+      "layer": "L4_feedback",
+      "source_id": "g1_ack_perception",
+      "space_id": "cooling_zone_01",
+      "situation_id": "cooling_feedback",
+      "intent_hint": "observe_and_confirm",
+      "summary": "清凉联动后，不适指标回落到接近中性。",
+      "tags": ["cooling_effect_confirmed", "mood_neutral"],
+      "priority": 0.34,
+      "confidence": 0.81,
+      "semantics": {
+        "environment": { "label": "comfortable", "level": "normal", "values": { "temperature_c": 28.1 }, "tags": ["comfortable"] },
+        "emotion": { "label": "neutral", "level": "normal", "values": { "negative_ratio": 0.08 }, "tags": ["mood_neutral"] }
+      },
+      "events": [{ "type": "cooling_effect_observed", "confidence": 0.81 }],
+      "raw_refs": [{ "terminal_id": "g1_ack_perception", "modality": "ack" }]
+    },
+    {
+      "id": "sound_loud_active",
+      "label": "声场活跃偏响",
+      "layer": "L1_sampling",
+      "source_id": "ambient_mic_array",
+      "space_id": "sound_cocktail_zone_01",
+      "summary": "环境声音活跃且略偏响。",
+      "tags": ["loud", "lively", "soundscape:active"],
+      "priority": 0.58,
+      "confidence": 0.87,
+      "semantics": {
+        "soundscape": { "label": "lively_noisy", "level": "watch", "values": { "noise_db": 72.6, "tempo_hint_bpm": 92 }, "tags": ["loud", "lively"] }
+      },
+      "raw_refs": [{ "terminal_id": "ambient_mic_array", "modality": "audio", "sample_rate_hz": 5 }]
+    },
+    {
+      "id": "sound_crowd_engaged",
+      "label": "人群参与度高",
+      "layer": "L2_recognition",
+      "source_id": "g1_rgb_camera",
+      "space_id": "sound_cocktail_zone_01",
+      "summary": "人群活动度较高，情绪整体偏积极。",
+      "tags": ["crowd:active", "mood_mixed"],
+      "priority": 0.56,
+      "confidence": 0.78,
+      "semantics": {
+        "crowd": { "label": "active", "level": "normal", "values": { "person_count": 12 }, "tags": ["moderate"] },
+        "emotion": { "label": "mixed", "level": "normal", "values": { "positive_ratio": 0.47 }, "tags": ["mood_mixed"] }
+      },
+      "raw_refs": [{ "terminal_id": "g1_rgb_camera", "modality": "rgb" }]
+    },
+    {
+      "id": "sound_request_music_cocktail",
+      "label": "音乐鸡尾酒意图",
+      "layer": "L3_intent",
+      "source_id": "semantic_fusion",
+      "space_id": "sound_cocktail_zone_01",
+      "situation_id": "music_cocktail_loop",
+      "intent_hint": "music_cocktail",
+      "summary": "将活跃声场转译为更舒展的音乐层和投影视觉。",
+      "tags": ["sound_cocktail", "music", "projection", "music_cocktail"],
+      "priority": 0.66,
+      "confidence": 0.84,
+      "events": [{ "type": "sound_cocktail_detected", "confidence": 0.86 }],
+      "affordances": [
+        { "action": "play_music_mix" },
+        { "action": "project_sound_wave" }
+      ],
+      "safety": { "level": "normal", "robot_action_required": false }
+    },
+    {
+      "id": "sound_feedback_balanced",
+      "label": "声场调和确认",
+      "layer": "L4_feedback",
+      "source_id": "gateway_ack",
+      "space_id": "sound_cocktail_zone_01",
+      "situation_id": "music_feedback",
+      "intent_hint": "observe_and_confirm",
+      "summary": "音响与投影介入后，声场更稳定且保持活跃。",
+      "tags": ["soundscape_balanced", "mood_bright"],
+      "priority": 0.32,
+      "confidence": 0.79,
+      "semantics": {
+        "soundscape": { "label": "balanced", "level": "normal", "values": { "noise_db": 63.2 }, "tags": ["quiet_enough"] },
+        "emotion": { "label": "bright", "level": "normal", "values": { "positive_ratio": 0.62 }, "tags": ["mood_bright"] }
+      },
+      "events": [{ "type": "soundscape_balance_observed", "confidence": 0.79 }],
+      "raw_refs": [{ "terminal_id": "speaker_projection_ack", "modality": "ack" }]
+    }
+  ],
+  "assemblies": [
+    {
+      "id": "heat_minimal",
+      "label": "热感：单一温度信号",
+      "item_ids": ["heat_temperature_high"]
+    },
+    {
+      "id": "heat_full_world_state",
+      "label": "热感：复合清凉请求",
+      "item_ids": ["heat_temperature_high", "heat_crowd_dense", "heat_rgb_gesture", "heat_request_cooling"]
+    },
+    {
+      "id": "music_full_world_state",
+      "label": "音乐：复合鸡尾酒请求",
+      "item_ids": ["sound_loud_active", "sound_crowd_engaged", "sound_request_music_cocktail"]
+    }
+  ]
+}

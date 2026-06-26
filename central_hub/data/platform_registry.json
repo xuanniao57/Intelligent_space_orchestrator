@@ -1,0 +1,153 @@
+{
+  "schema_version": "platform-registry-v0.3",
+  "updated_at": "2026-06-01",
+  "selection_rule": "Only keep platforms with a public GitHub repository and a top-tier conference or journal publication. Concept notes, closed demos, consumer products, and papers without runnable code stay in the watchlist.",
+  "criteria": [
+    "public GitHub repository or official open-source repo",
+    "accepted paper in a top conference/journal or a strong robotics/AI venue",
+    "spatial intelligence relevance: sensing, scene state, embodied interaction, traffic/city simulation, or multi-agent behavior",
+    "clear architectural lesson for Tongyu Central Hub"
+  ],
+  "platforms": [
+    {
+      "id": "generative_agents",
+      "name": "Stanford Generative Agents / Smallville",
+      "domain": "LLM social agents",
+      "github": "https://github.com/joonspk-research/generative_agents",
+      "paper": "Generative Agents: Interactive Simulacra of Human Behavior",
+      "venue": "UIST 2023",
+      "local_path": "platforms_demo/01_generative_agents",
+      "local_status": "cloned",
+      "architecture": "memory stream -> retrieval -> reflection -> planning -> action",
+      "tongyu_lesson": "Build long-running space personas with memory, reflection, daily plan, and human natural-language intervention.",
+      "bridge_payload": "memory/activity stream -> SensorFrame + AgentIntention"
+    },
+    {
+      "id": "habitat",
+      "name": "AI Habitat / Habitat-Sim",
+      "domain": "embodied 3D simulation",
+      "github": "https://github.com/facebookresearch/habitat-sim",
+      "paper": "Habitat: A Platform for Embodied AI Research",
+      "venue": "ICCV 2019; Habitat 2.0 NeurIPS 2021",
+      "local_path": "platforms_demo/02_habitat",
+      "local_status": "adapter_ready_not_cloned",
+      "architecture": "3D scene -> sensors -> tasks -> benchmark metrics",
+      "tongyu_lesson": "Use scene graph, sensor configuration, and benchmark metrics as the model for spatial perception and evaluation.",
+      "bridge_payload": "scene/task observations -> SensorFrame; benchmark events -> evaluation record"
+    },
+    {
+      "id": "igibson",
+      "name": "iGibson 2.0",
+      "domain": "interactive household robotics",
+      "github": "https://github.com/StanfordVL/iGibson",
+      "paper": "iGibson 2.0: Object-Centric Simulation for Robot Learning of Everyday Household Tasks",
+      "venue": "CoRL 2021 / PMLR 2022",
+      "local_path": "platforms_demo/05_igibson",
+      "local_status": "adapter_ready_not_cloned",
+      "architecture": "object state -> predicate logic -> interactive tasks -> robot actions",
+      "tongyu_lesson": "Represent space objects with actionable states such as wet, hot, open, occupied, and dirty.",
+      "bridge_payload": "object predicates -> semantic_tags + DeviceCommand candidates"
+    },
+    {
+      "id": "virtualhome",
+      "name": "VirtualHome",
+      "domain": "programmatic activity simulation",
+      "github": "https://github.com/xavierpuigf/virtualhome",
+      "paper": "VirtualHome: Simulating Household Activities via Programs",
+      "venue": "CVPR 2018",
+      "local_path": "platforms_demo/06_virtualhome",
+      "local_status": "adapter_ready_not_cloned",
+      "architecture": "activity program -> evolving graph -> Unity simulation",
+      "tongyu_lesson": "Translate human routines into executable spatial programs and evolving state graphs.",
+      "bridge_payload": "activity script/evolving graph -> AgentIntention + timeline"
+    },
+    {
+      "id": "carla",
+      "name": "CARLA",
+      "domain": "open urban driving simulation",
+      "github": "https://github.com/carla-simulator/carla",
+      "paper": "CARLA: An Open Urban Driving Simulator",
+      "venue": "CoRL 2017",
+      "local_path": "platforms_demo/03_carla",
+      "local_status": "cloned",
+      "architecture": "urban map -> sensors -> actors -> traffic scenarios",
+      "tongyu_lesson": "Use a city-scale sensor/actor pipeline and scenario runner as the reference for site-scale simulation bridges.",
+      "bridge_payload": "traffic state + weather + pedestrian/vehicle counts -> SensorFrame"
+    },
+    {
+      "id": "smarts",
+      "name": "SMARTS",
+      "domain": "multi-agent autonomous-driving interaction",
+      "github": "https://github.com/huawei-noah/SMARTS",
+      "paper": "SMARTS: An Open-Source Scalable Multi-Agent RL Training School for Autonomous Driving",
+      "venue": "CoRL 2020 / PMLR 2021",
+      "local_path": "platforms_demo/07_smarts",
+      "local_status": "adapter_ready_not_cloned",
+      "architecture": "scenario zoo -> multi-agent policies -> interaction metrics",
+      "tongyu_lesson": "Borrow multi-agent scenario orchestration and interaction metrics for crowd/robot coordination.",
+      "bridge_payload": "agent interaction metrics -> negotiation proposal + risk tags"
+    },
+    {
+      "id": "metadrive",
+      "name": "MetaDrive",
+      "domain": "compositional driving scenarios",
+      "github": "https://github.com/metadriverse/metadrive",
+      "paper": "MetaDrive: Composing Diverse Driving Scenarios for Generalizable Reinforcement Learning",
+      "venue": "IEEE TPAMI 2022",
+      "local_path": "platforms_demo/08_metadrive",
+      "local_status": "adapter_ready_not_cloned",
+      "architecture": "procedural map -> traffic setting -> lightweight simulator",
+      "tongyu_lesson": "Use compositional scenario generation to stress-test Tongyu policies before field deployment.",
+      "bridge_payload": "scenario parameters + safety metrics -> SensorFrame + evaluation record"
+    },
+    {
+      "id": "cityflow",
+      "name": "CityFlow",
+      "domain": "large-scale city traffic MARL",
+      "github": "https://github.com/cityflow-project/CityFlow",
+      "paper": "CityFlow: A Multi-Agent Reinforcement Learning Environment for Large Scale City Traffic Scenario",
+      "venue": "WWW 2019 Demo",
+      "local_path": "platforms_demo/09_cityflow",
+      "local_status": "adapter_ready_not_cloned",
+      "architecture": "road network + traffic flow -> microscopic simulator -> Python RL API",
+      "tongyu_lesson": "Use fast microscopic traffic simulation as a proxy for crowd-flow and path-guidance experiments.",
+      "bridge_payload": "traffic flow / queue / intersection load -> SensorFrame"
+    }
+  ],
+  "watchlist": [
+    {
+      "name": "PlanGPT / tailored urban planning agent",
+      "status": "literature_only",
+      "reason": "ACL 2025 Industry paper is relevant to urban planning agents, but a public runnable GitHub repository was not confirmed in this pass.",
+      "use": "Keep as planning-agent literature; do not present as platform benchmark until code is public."
+    },
+    {
+      "name": "CityVerse / urban agent benchmark",
+      "status": "preprint_or_unconfirmed_venue",
+      "reason": "Promising urban data/API/benchmark direction, but it should stay in watchlist until venue status and runnable code maturity are confirmed.",
+      "use": "Monitor for urban-task taxonomy and evaluation metrics."
+    },
+    {
+      "name": "EmbodiedCity / CityEQA",
+      "status": "concept_watch",
+      "reason": "Relevant to open-city embodied question answering, but not selected as core benchmark under the strict code + top-venue gate.",
+      "use": "Use as inspiration for city-scale perception questions, not as a platform pillar."
+    },
+    {
+      "name": "MIT CityScope",
+      "status": "method_reference",
+      "reason": "Strong participatory urban-interface idea, but not a clean reproducible GitHub platform under the current selection rule.",
+      "use": "Keep as interaction-method reference, not as core platform benchmark."
+    }
+  ],
+  "excluded": [
+    {
+      "name": "Apple spatial/consumer product line",
+      "reason": "Consumer hardware/product ecosystem, not an open research platform for our central-hub architecture."
+    },
+    {
+      "name": "Concept-only urban AI systems",
+      "reason": "No runnable repo or no confirmed top-venue paper; not suitable for the main comparison table."
+    }
+  ]
+}

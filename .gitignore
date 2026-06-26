@@ -1,0 +1,40 @@
+# Python / virtualenv
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Runtime state and logs
+logs/
+outputs/
+*.log
+central_hub/data/*.log
+central_hub/data/zhichang_tongyu_agent_memory.jsonl
+central_hub/data/demo_recordings/
+central_hub/data/qa_screenshots/
+demo_video_package_*/
+g1_robot_handoff_package/
+central_hub/bridges/
+central_hub/backend/coffee_scenario.py
+central_hub/frontend/
+frontend/talking_spaces_hub/
+咖啡机器人智场落地方案.md
+third_party/UrbanAgents/.urban-agent/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.trae/
+.claude/
