@@ -61,6 +61,14 @@ powershell -ExecutionPolicy Bypass -File .\start_hub_local.ps1 -Port 8798
 powershell -ExecutionPolicy Bypass -File .\start_hub_lan.ps1 -Port 8798
 ```
 
+如果现场智能插座也固定连接 `192.168.1.50:8798`，使用 8798 分流模式：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start_hub_lan_mux.ps1
+```
+
+此模式下，对外仍访问 `http://192.168.1.50:8798/agent-console`；内部中枢 Flask 运行在 `127.0.0.1:8799`，来自智能插座 `192.168.1.156` 的原始 TCP 会被分流到喷雾网关内部端口 `8080`。
+
 访问：
 
 ```text

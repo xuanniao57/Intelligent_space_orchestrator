@@ -4,7 +4,7 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 const DEFAULT_ROBOT_BASE_URL = "http://127.0.0.1:8731";
 const DEFAULT_SPRAY_GATEWAY_URL = "http://192.168.1.50:22001";
 const DEFAULT_SMART_PLUG_IP = "192.168.1.156";
-const DEFAULT_PLUG_TCP_ENDPOINT = "192.168.1.50:8080";
+const DEFAULT_PLUG_TCP_ENDPOINT = "192.168.1.50:8798";
 
 const state = {
   page: "monitor",

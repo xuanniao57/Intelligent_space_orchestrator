@@ -2166,7 +2166,7 @@ def get_agent_gateway_health():
 
     timeout = max(0.5, min(request.args.get("timeout", 2.0, type=float), 8.0))
     smart_plug_ip = request.args.get("smart_plug_ip") or request.args.get("plug_ip") or "192.168.1.156"
-    plug_tcp_endpoint = request.args.get("plug_tcp_endpoint") or "192.168.1.50:8080"
+    plug_tcp_endpoint = request.args.get("plug_tcp_endpoint") or "192.168.1.50:8798"
     try:
         req = UrlRequest(health_url, method="GET", headers={"Accept": "application/json"})
         with urlopen(req, timeout=timeout) as response:
