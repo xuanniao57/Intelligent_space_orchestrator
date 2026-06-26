@@ -273,7 +273,7 @@ function robotBaseUrl() {
 }
 
 function sprayGatewayUrl() {
-  return ($("#sprayUrl")?.value || "http://127.0.0.1:22001").trim().replace(/\/$/, "");
+  return ($("#sprayUrl")?.value || "http://192.168.1.156:22001").trim().replace(/\/$/, "");
 }
 
 function outputRoutingOverrides() {
