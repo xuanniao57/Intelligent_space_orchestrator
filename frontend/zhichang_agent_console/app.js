@@ -892,7 +892,10 @@ async function sendOutputSequence() {
         execute: true,
       }),
     });
-    if ($("#autoAckOutput")?.checked) await simulateAllAcks(result.commands || []);
+    if ($("#autoAckOutput")?.checked) {
+      const directAcked = new Set((result.direct_ack_records || []).map((record) => record?.ack?.message_id).filter(Boolean));
+      await simulateAllAcks((result.commands || []).filter((command) => !directAcked.has(command.message_id)));
+    }
     renderLabResult("output", result, result.status || "sent");
     showToast(`输出链已发送 ${result.commands?.length || 0} 条命令`);
     await delayedRefresh();
@@ -974,7 +977,7 @@ async function sendOutputCommand(kind) {
         routing_overrides: outputRoutingOverrides(),
       }),
     });
-    if ($("#autoAckOutput").checked) await simulateAck(result.command, "output_test_manual_command");
+    if ($("#autoAckOutput").checked && !result.direct_ack_record) await simulateAck(result.command, "output_test_manual_command");
     renderLabResult("output", result, result.status || "sent");
     showToast(`${commandType(result.command)} 已发送`);
     await delayedRefresh();
@@ -1001,7 +1004,10 @@ async function sendOutputNaturalLanguage() {
       }),
     });
     const commands = result.result?.commands || [];
-    if ($("#autoAckOutput").checked) await simulateAllAcks(commands);
+    if ($("#autoAckOutput").checked) {
+      const directAcked = new Set((result.result?.direct_ack_records || []).map((record) => record?.ack?.message_id).filter(Boolean));
+      await simulateAllAcks(commands.filter((command) => !directAcked.has(command.message_id)));
+    }
     renderLabResult("output", result, result.status || "processed");
     showToast(`Agent 输出 ${commands.length} 条命令`);
     await delayedRefresh();
