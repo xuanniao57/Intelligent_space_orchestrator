@@ -272,6 +272,16 @@ function robotBaseUrl() {
   return ($("#robotUrl")?.value || DEFAULT_ROBOT_BASE_URL).trim().replace(/\/$/, "");
 }
 
+function sprayGatewayUrl() {
+  return ($("#sprayUrl")?.value || "http://127.0.0.1:22001").trim().replace(/\/$/, "");
+}
+
+function outputRoutingOverrides() {
+  return {
+    spray_gateway: { direct_http: sprayGatewayUrl() },
+  };
+}
+
 function showToast(message) {
   const toast = $("#toast");
   toast.textContent = message;
@@ -878,6 +888,7 @@ async function sendOutputSequence() {
       body: JSON.stringify({
         action_ids: state.outputSelection,
         robot_url: robotBaseUrl(),
+        routing_overrides: outputRoutingOverrides(),
         execute: true,
       }),
     });
@@ -960,6 +971,7 @@ async function sendOutputCommand(kind) {
         scenario_id: "output_test",
         space_id: kind === "speaker" || kind === "projection" ? "sound_cocktail_zone_01" : "cooling_zone_01",
         robot_url: robotBaseUrl(),
+        routing_overrides: outputRoutingOverrides(),
       }),
     });
     if ($("#autoAckOutput").checked) await simulateAck(result.command, "output_test_manual_command");
@@ -985,6 +997,7 @@ async function sendOutputNaturalLanguage() {
         text,
         mode: "output_tool_test",
         robot_url: robotBaseUrl(),
+        routing_overrides: outputRoutingOverrides(),
       }),
     });
     const commands = result.result?.commands || [];

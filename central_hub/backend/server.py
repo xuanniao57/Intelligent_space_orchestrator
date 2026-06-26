@@ -930,6 +930,19 @@ def normalize_robot_execute_url(url: Optional[str]) -> Optional[str]:
     return f"{url}/api/g1/execute"
 
 
+def normalize_gateway_command_url(url: Optional[str], target_type: str = "") -> Optional[str]:
+    if not url:
+        return None
+    if target_type == "robot":
+        return normalize_robot_execute_url(url)
+    url = str(url).strip().rstrip("/")
+    if not url:
+        return None
+    if url.endswith("/api/command"):
+        return url
+    return f"{url}/api/command"
+
+
 def merge_routing_overrides(
     routing: Dict[str, Any],
     target_id: str,
@@ -942,13 +955,25 @@ def merge_routing_overrides(
         override = route_overrides.get(key)
         if isinstance(override, dict):
             merged.update(override)
-        elif isinstance(override, str) and target_type == "robot":
-            direct_http = normalize_robot_execute_url(override)
+            direct_http = normalize_gateway_command_url(override.get("direct_http") or override.get("url"), target_type)
+            if direct_http:
+                merged["direct_http"] = direct_http
+        elif isinstance(override, str):
+            direct_http = normalize_gateway_command_url(override, target_type)
             if direct_http:
                 merged["direct_http"] = direct_http
     robot_url = route_overrides.get("robot_url")
     if target_type == "robot" and robot_url:
         direct_http = normalize_robot_execute_url(str(robot_url))
+        if direct_http:
+            merged["direct_http"] = direct_http
+    gateway_url_key = {
+        "spray_gateway": "spray_url",
+        "speaker_gateway": "speaker_url",
+        "projection_gateway": "projection_url",
+    }.get(target_type)
+    if gateway_url_key and route_overrides.get(gateway_url_key):
+        direct_http = normalize_gateway_command_url(str(route_overrides[gateway_url_key]), target_type)
         if direct_http:
             merged["direct_http"] = direct_http
     return merged
@@ -1044,8 +1069,11 @@ def maybe_dispatch_direct_http(command: Dict[str, Any]) -> Dict[str, Any]:
                 "status": "ok",
                 "transport": "direct_http",
                 "url": direct_http,
+                "response": payload,
                 "robot_response": payload,
             }
+            if command.get("target_type") != "robot":
+                result["device_response"] = payload
     except HTTPError as exc:
         result = {
             "message_id": command.get("message_id"),
@@ -1068,29 +1096,69 @@ def maybe_dispatch_direct_http(command: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def record_direct_dispatch_ack(command: Dict[str, Any], dispatch_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    if command.get("target_type") != "robot" or dispatch_result.get("status") != "ok":
+    if dispatch_result.get("status") != "ok":
         return None
-    robot_response = dispatch_result.get("robot_response") or {}
-    final_ack = robot_response.get("final_ack") if isinstance(robot_response, dict) else None
-    if not isinstance(final_ack, dict) or not final_ack.get("message_id"):
+    response_payload = dispatch_result.get("robot_response") or {}
+    if not isinstance(response_payload, dict):
         return None
-    ack = dict(final_ack)
-    ack.setdefault("target_id", command.get("target_id", "unitree_g1"))
-    ack.setdefault("status", "ok")
-    ack.setdefault("stage", "direct_http_final_ack")
-    ack.setdefault("device_time", datetime.now(CST).isoformat())
-    ack["transport"] = "direct_http"
-    if any(item.get("message_id") == ack.get("message_id") and item.get("stage") == ack.get("stage") for item in robot_ack_history):
+
+    if command.get("target_type") == "robot":
+        final_ack = response_payload.get("final_ack")
+        if not isinstance(final_ack, dict) or not final_ack.get("message_id"):
+            return None
+        ack = dict(final_ack)
+        ack.setdefault("target_id", command.get("target_id", "unitree_g1"))
+        ack.setdefault("status", "ok")
+        ack.setdefault("stage", "direct_http_final_ack")
+        ack.setdefault("device_time", datetime.now(CST).isoformat())
+        ack["transport"] = "direct_http"
+        if any(item.get("message_id") == ack.get("message_id") and item.get("stage") == ack.get("stage") for item in robot_ack_history):
+            return None
+        robot_ack_history.append(ack)
+        for context in agent_context_store.values():
+            context["recent_robot_acks"] = robot_ack_history[-20:]
+        command["latest_robot_ack"] = ack
+        memory_record = record_ack_memory(ack, command, ack_kind="robot_ack")
+        zhichang_hermes.record_ack(ack, command, memory_record, ack_kind="robot_ack")
+        record = {"ack": ack, "memory_record": memory_record}
+        event_stream.append({"type": "robot_ack", "result": ack, "memory_record": memory_record, "time_ms": int(time.time() * 1000)})
+        broadcast("robot_ack", ack)
+        return record
+
+    if not response_payload.get("message_id"):
         return None
-    robot_ack_history.append(ack)
+    ack = {
+        "message_id": response_payload.get("message_id"),
+        "task_id": response_payload.get("task_id"),
+        "target_id": response_payload.get("target_id", command.get("target_id", "unknown_device")),
+        "target_type": response_payload.get("target_type", command.get("target_type")),
+        "status": response_payload.get("status", "unknown"),
+        "stage": response_payload.get("stage"),
+        "progress": response_payload.get("progress"),
+        "executed_steps": response_payload.get("executed_steps", []),
+        "device_time": response_payload.get("device_time", datetime.now(CST).isoformat()),
+        "error": response_payload.get("error"),
+        "telemetry": response_payload.get("telemetry", {}),
+        "artifacts": response_payload.get("artifacts", []),
+        "simulated": bool(response_payload.get("simulated", False)),
+        "transport": "direct_http",
+        "plug_command": response_payload.get("plug_command"),
+        "speaker_command": response_payload.get("speaker_command"),
+    }
+    if any(item.get("message_id") == ack.get("message_id") and item.get("stage") == ack.get("stage") for item in device_ack_history):
+        return None
+    device_ack_history.append(ack)
     for context in agent_context_store.values():
-        context["recent_robot_acks"] = robot_ack_history[-20:]
-    command["latest_robot_ack"] = ack
-    memory_record = record_ack_memory(ack, command, ack_kind="robot_ack")
-    zhichang_hermes.record_ack(ack, command, memory_record, ack_kind="robot_ack")
+        context["recent_device_acks"] = device_ack_history[-20:]
+    command["latest_device_ack"] = ack
+    memory_record = record_ack_memory(ack, command, ack_kind="device_ack")
+    zhichang_hermes.record_ack(ack, command, memory_record, ack_kind="device_ack")
+    if ack["target_id"] in connected_devices:
+        connected_devices[ack["target_id"]]["last_seen"] = datetime.now(CST).isoformat()
+        connected_devices[ack["target_id"]]["status"] = ack["status"]
     record = {"ack": ack, "memory_record": memory_record}
-    event_stream.append({"type": "robot_ack", "result": ack, "memory_record": memory_record, "time_ms": int(time.time() * 1000)})
-    broadcast("robot_ack", ack)
+    event_stream.append({"type": "device_ack", "result": ack, "memory_record": memory_record, "time_ms": int(time.time() * 1000)})
+    broadcast("device_ack", ack)
     return record
 
 
@@ -2131,6 +2199,8 @@ def post_hermes_message():
         frame["space_id"] = data["space_id"]
     if data.get("robot_url"):
         frame["robot_url"] = data["robot_url"]
+    if data.get("routing_overrides"):
+        frame["routing_overrides"] = data["routing_overrides"]
     if mode == "output_tool_test":
         text_lower = text.lower()
         scene = frame.setdefault("scene", {})
