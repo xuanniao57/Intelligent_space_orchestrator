@@ -1,7 +1,8 @@
 param(
   [int]$Port = 8798,
   [string]$HostAddress = "0.0.0.0",
-  [int]$HealthIntervalSeconds = 20
+  [int]$HealthIntervalSeconds = 20,
+  [switch]$ClassicHub
 )
 
 $ErrorActionPreference = "Continue"
@@ -11,6 +12,7 @@ $OutLog = Join-Path $LogDir "hub_$Port.out.log"
 $ErrLog = Join-Path $LogDir "hub_$Port.err.log"
 $WatchdogLog = Join-Path $LogDir "hub_watchdog.log"
 $VenvPython = Join-Path $Root ".venv\Scripts\python.exe"
+$MuxScript = Join-Path $Root "start_hub_lan_mux.ps1"
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 Set-Location $Root
@@ -52,7 +54,8 @@ function Test-HubHealth {
 Ensure-EnvFile
 Ensure-Venv
 $env:URBAN_AGENTS_ROOT = Join-Path $Root "third_party\UrbanAgents"
-Write-WatchdogLog "Watchdog started for $HostAddress`:$Port."
+$ModeLabel = if ($ClassicHub) { "classic" } else { "mux" }
+Write-WatchdogLog "Watchdog started for $HostAddress`:$Port mode=$ModeLabel."
 
 while ($true) {
   if (Test-HubHealth) {
@@ -60,17 +63,27 @@ while ($true) {
     continue
   }
 
-  Write-WatchdogLog "Hub health check failed; starting server."
-  $Process = Start-Process `
-    -FilePath $VenvPython `
-    -ArgumentList @(".\central_hub\backend\server.py", "--host", $HostAddress, "--port", "$Port") `
-    -WorkingDirectory $Root `
-    -WindowStyle Hidden `
-    -RedirectStandardOutput $OutLog `
-    -RedirectStandardError $ErrLog `
-    -PassThru
+  if ($ClassicHub) {
+    Write-WatchdogLog "Hub health check failed; starting classic server."
+    $Process = Start-Process `
+      -FilePath $VenvPython `
+      -ArgumentList @(".\central_hub\backend\server.py", "--host", $HostAddress, "--port", "$Port") `
+      -WorkingDirectory $Root `
+      -WindowStyle Hidden `
+      -RedirectStandardOutput $OutLog `
+      -RedirectStandardError $ErrLog `
+      -PassThru
+  } else {
+    Write-WatchdogLog "Hub health check failed; starting mux mode."
+    $Process = Start-Process `
+      -FilePath "powershell.exe" `
+      -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $MuxScript, "-ExternalPort", "$Port", "-HostAddress", $HostAddress) `
+      -WorkingDirectory $Root `
+      -WindowStyle Hidden `
+      -PassThru
+  }
 
-  Write-WatchdogLog "Started hub process PID=$($Process.Id)."
+  Write-WatchdogLog "Started hub process PID=$($Process.Id) mode=$ModeLabel."
   Wait-Process -Id $Process.Id
   Write-WatchdogLog "Hub process PID=$($Process.Id) exited; restarting after 5 seconds."
   Start-Sleep -Seconds 5
