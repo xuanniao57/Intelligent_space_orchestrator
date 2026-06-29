@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zhichang-tongyu-hardware"
+version = "0.1.0"
+description = "Client-side Python SDK for the Zhichang Tongyu central hardware hub."
+readme = "docs/HARDWARE_PYTHON_SDK.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Zhichang Tongyu Team" }
+]
+dependencies = []
+
+[project.scripts]
+tongyu-hardware = "tongyu_hardware.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["tongyu_hardware*"]

@@ -14,14 +14,16 @@
 """
 
 import json
+import os
 import time
 import uuid
 import logging
 import re
+import socket
 import threading
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Any, Mapping
+from typing import Dict, List, Optional, Any, Mapping, MutableMapping
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from urllib.error import HTTPError, URLError
@@ -1016,11 +1018,18 @@ def default_routing_for_command(target_id: str, target_type: str, command_type: 
             "mqtt_topic": f"talking_spaces/{target_id}/command",
         }
     if target_type == "spray_gateway":
-        return {"http_poll": f"/api/devices/{target_id}/commands", "tcp_endpoint": "12003"}
+        spray_gateway_url = os.environ.get("TONGYU_SPRAY_GATEWAY_URL", "http://192.168.1.50:22001")
+        routing = {"http_poll": f"/api/devices/{target_id}/commands", "tcp_endpoint": "12003"}
+        direct_http = normalize_gateway_command_url(spray_gateway_url, target_type)
+        if direct_http:
+            routing["direct_http"] = direct_http
+        return routing
     if target_type == "speaker_gateway":
         return {"http_poll": f"/api/devices/{target_id}/commands", "tcp_endpoint": "12004"}
     if target_type == "projection_gateway":
         return {"http_poll": f"/api/devices/{target_id}/commands", "tcp_endpoint": "12005"}
+    if target_type == "lan_control_gateway":
+        return {"raw_lan": True, "dry_run_default": True}
     return {"http_poll": f"/api/devices/{target_id}/commands"}
 
 
@@ -1127,6 +1136,181 @@ def maybe_dispatch_direct_http(command: Dict[str, Any]) -> Dict[str, Any]:
     event_stream.append({"type": "command_dispatch", "result": result, "time_ms": int(time.time() * 1000)})
     broadcast("command_dispatch", result)
     return result
+
+
+def _normalize_hex_payload(payload: str) -> str:
+    compact = re.sub(r"[^0-9A-Fa-f]", "", str(payload or ""))
+    if len(compact) % 2 != 0:
+        raise ValueError("HEX payload length must be even")
+    if compact and not re.fullmatch(r"[0-9A-Fa-f]+", compact):
+        raise ValueError("HEX payload contains non-hex characters")
+    return compact
+
+
+def _raw_lan_payload_bytes(params: Mapping[str, Any]) -> bytes:
+    payload = str(params.get("payload") or "")
+    payload_format = str(params.get("payload_format") or params.get("format") or "STR").upper()
+    if payload_format == "HEX":
+        return bytes.fromhex(_normalize_hex_payload(payload))
+    if payload_format == "STR":
+        return payload.encode(str(params.get("encoding") or "utf-8"))
+    raise ValueError(f"unsupported payload_format: {payload_format}")
+
+
+def _validate_wol_mac(mac: str) -> str:
+    compact = re.sub(r"[^0-9A-Fa-f]", "", str(mac or ""))
+    if len(compact) != 12 or not re.fullmatch(r"[0-9A-Fa-f]{12}", compact):
+        raise ValueError("WOL MAC must contain 12 hex characters")
+    return ":".join(compact[i:i + 2].upper() for i in range(0, 12, 2))
+
+
+def _tcp_probe(host: str, port: int, timeout: float) -> Dict[str, Any]:
+    started = time.time()
+    with socket.create_connection((host, port), timeout=timeout):
+        pass
+    return {"probe": "tcp_connect", "ok": True, "latency_ms": round((time.time() - started) * 1000, 2)}
+
+
+def maybe_dispatch_raw_lan(
+    command: Dict[str, Any],
+    *,
+    force_dry_run: bool = True,
+    probe: bool = True,
+    allow_send: bool = False,
+) -> Dict[str, Any]:
+    body = command.get("command") or {}
+    command_type = str(body.get("type") or "")
+    params = body.get("params") or {}
+    if not isinstance(params, Mapping):
+        params = {}
+
+    # The registry stores dry_run=true as a safe default. Runtime controls are
+    # stronger: real payloads are sent only when the UI/API explicitly disables
+    # dry-run and also sets allow_send=true.
+    dry_run = bool(force_dry_run) or not bool(allow_send)
+    if isinstance(body, MutableMapping) and isinstance(params, MutableMapping):
+        params["dry_run"] = dry_run
+    timeout = min(max(command.get("timeout_ms", 3000) / 1000.0, 0.5), 8.0)
+    base = {
+        "message_id": command.get("message_id"),
+        "transport": "raw_lan",
+        "command_type": command_type,
+        "target_id": command.get("target_id"),
+        "target_type": command.get("target_type"),
+        "dry_run": dry_run,
+        "payload_sent": False,
+    }
+
+    try:
+        if command_type == "lan.wol":
+            mac = _validate_wol_mac(str(params.get("mac") or str(params.get("payload") or "").replace("WOL#", "")))
+            result = {
+                **base,
+                "status": "ok",
+                "stage": "dry_run_wol_validated" if dry_run else "send_blocked_requires_allow_send",
+                "mac": mac,
+                "bytes_len": 102,
+            }
+            if dry_run or not allow_send:
+                if not dry_run and not allow_send:
+                    result["status"] = "blocked"
+                    result["error"] = "raw LAN send requires allow_send=true"
+                event_stream.append({"type": "command_dispatch", "result": result, "time_ms": int(time.time() * 1000)})
+                broadcast("command_dispatch", result)
+                return result
+
+            payload = bytes.fromhex("FF" * 6 + re.sub(r"[^0-9A-Fa-f]", "", mac) * 16)
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock_obj:
+                sock_obj.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                sock_obj.sendto(payload, ("255.255.255.255", 9))
+            result.update({"status": "ok", "stage": "wol_sent", "payload_sent": True})
+            event_stream.append({"type": "command_dispatch", "result": result, "time_ms": int(time.time() * 1000)})
+            broadcast("command_dispatch", result)
+            return result
+
+        if command_type != "lan.raw_command":
+            return {**base, "status": "skipped", "reason": "not a raw LAN command"}
+
+        protocol = str(params.get("protocol") or "").upper()
+        host = str(params.get("host") or "").strip()
+        port = int(params.get("port") or 0)
+        payload_bytes = _raw_lan_payload_bytes(params)
+        endpoint = f"{host}:{port}" if host and port else ""
+        if protocol not in {"TCP", "UDP"}:
+            raise ValueError("protocol must be TCP or UDP")
+        if not host or not (1 <= port <= 65535):
+            raise ValueError("host and valid port are required")
+
+        result = {
+            **base,
+            "status": "ok",
+            "stage": "dry_run_validated" if dry_run else "send_blocked_requires_allow_send",
+            "protocol": protocol,
+            "endpoint": endpoint,
+            "payload_format": str(params.get("payload_format") or "STR").upper(),
+            "bytes_len": len(payload_bytes),
+            "repeat_count": int(params.get("repeat_count") or 1),
+            "delay_ms": int(params.get("delay_ms") or 0),
+        }
+        if dry_run:
+            if protocol == "TCP" and probe:
+                try:
+                    result["probe_result"] = _tcp_probe(host, port, timeout)
+                    result["stage"] = "dry_run_tcp_connect_ok"
+                except OSError as exc:
+                    result["status"] = "failed"
+                    result["stage"] = "dry_run_tcp_connect_failed"
+                    result["error"] = str(exc)
+            elif protocol == "UDP":
+                result["stage"] = "dry_run_udp_format_ok"
+                result["probe_result"] = {"probe": "udp_no_payload", "ok": True}
+            event_stream.append({"type": "command_dispatch", "result": result, "time_ms": int(time.time() * 1000)})
+            broadcast("command_dispatch", result)
+            return result
+
+        if not allow_send:
+            result["status"] = "blocked"
+            result["error"] = "raw LAN send requires allow_send=true"
+            event_stream.append({"type": "command_dispatch", "result": result, "time_ms": int(time.time() * 1000)})
+            broadcast("command_dispatch", result)
+            return result
+
+        repeat_count = max(1, min(int(params.get("repeat_count") or 1), 5))
+        delay_s = max(0.0, min(float(params.get("delay_ms") or 0) / 1000.0, 2.0))
+        for index in range(repeat_count):
+            if protocol == "TCP":
+                with socket.create_connection((host, port), timeout=timeout) as sock_obj:
+                    sock_obj.sendall(payload_bytes)
+            else:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock_obj:
+                    sock_obj.sendto(payload_bytes, (host, port))
+            if delay_s and index < repeat_count - 1:
+                time.sleep(delay_s)
+        result.update({"status": "ok", "stage": "payload_sent", "payload_sent": True})
+    except Exception as exc:
+        result = {**base, "status": "failed", "stage": "validation_or_probe_failed", "error": str(exc)}
+
+    event_stream.append({"type": "command_dispatch", "result": result, "time_ms": int(time.time() * 1000)})
+    broadcast("command_dispatch", result)
+    return result
+
+
+def dispatch_agent_command(
+    command: Dict[str, Any],
+    *,
+    raw_lan_dry_run: bool = True,
+    raw_lan_probe: bool = True,
+    allow_raw_lan_send: bool = False,
+) -> Dict[str, Any]:
+    command_type = str((command.get("command") or {}).get("type") or "")
+    if command_type.startswith("lan."):
+        return maybe_dispatch_raw_lan(
+            command,
+            force_dry_run=raw_lan_dry_run,
+            probe=raw_lan_probe,
+            allow_send=allow_raw_lan_send,
+        )
+    return maybe_dispatch_direct_http(command)
 
 
 def record_direct_dispatch_ack(command: Dict[str, Any], dispatch_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -1278,7 +1462,7 @@ def process_scene_semantic_payload(data: Dict[str, Any]) -> Dict[str, Any]:
     ]
     if commands:
         command_history.extend(commands)
-    dispatch_results = [maybe_dispatch_direct_http(command) for command in commands]
+    dispatch_results = [dispatch_agent_command(command) for command in commands]
     zhichang_hermes.record_dispatch(run_id, commands, dispatch_results)
     direct_ack_records = [
         record
@@ -1327,6 +1511,93 @@ def process_scene_semantic_payload(data: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+def _lan_command_action(row: Mapping[str, Any]) -> Dict[str, Any]:
+    command_id = str(row.get("id") or "").strip()
+    label = str(row.get("label") or command_id).strip()
+    protocol = str(row.get("protocol") or "").strip().upper()
+    payload = str(row.get("payload") or "").strip()
+    payload_format = str(row.get("format") or row.get("payload_format") or "STR").strip().upper()
+    delay_ms = int(row.get("delay_ms") or row.get("delay") or 50)
+    repeat_count = int(row.get("repeat_count") or row.get("count") or 1)
+    host = str(row.get("host") or "").strip()
+    port = row.get("port")
+    category = str(row.get("category") or "lan_control").strip()
+
+    if payload.upper().startswith("WOL#"):
+        command_type = "lan.wol"
+        params = {
+            "label": label,
+            "mac": payload.split("#", 1)[1].strip(),
+            "payload": payload,
+            "payload_format": "STR",
+            "delay_ms": delay_ms,
+            "repeat_count": repeat_count,
+            "dry_run": True,
+        }
+    else:
+        command_type = "lan.raw_command"
+        params = {
+            "label": label,
+            "protocol": protocol,
+            "host": host,
+            "port": int(port) if str(port or "").isdigit() else port,
+            "payload": payload,
+            "payload_format": payload_format,
+            "delay_ms": delay_ms,
+            "repeat_count": repeat_count,
+            "dry_run": True,
+        }
+
+    return {
+        "id": command_id,
+        "category": category,
+        "label": label,
+        "description": f"{protocol or 'WOL'} {host + ':' if host else ''}{port or ''} / {payload_format}",
+        "target_id": "lan_control_gateway",
+        "target_type": "lan_control_gateway",
+        "space_id": "field_lan_control",
+        "scenario_id": "lan_control_test",
+        "ack_required": False,
+        "timeout_ms": int(row.get("timeout_ms") or 3000),
+        "command": {"type": command_type, "params": params},
+    }
+
+
+def _merge_lan_control_registry(output_registry: Dict[str, Any]) -> Dict[str, Any]:
+    lan_registry = load_json_file(
+        AGENT_IO_REGISTRY_DIR / "lan_control_tools.json",
+        {"schema_version": "fallback", "categories": [], "commands": [], "presets": []},
+    )
+    if not lan_registry.get("commands"):
+        return output_registry
+
+    merged = _json_clone(output_registry)
+    categories = merged.setdefault("categories", [])
+    existing_category_ids = {str(item.get("id")) for item in categories if isinstance(item, Mapping)}
+    for category in lan_registry.get("categories") or []:
+        if isinstance(category, Mapping) and category.get("id") and str(category.get("id")) not in existing_category_ids:
+            categories.append(_json_clone(category))
+            existing_category_ids.add(str(category.get("id")))
+
+    actions = merged.setdefault("actions", [])
+    existing_action_ids = {str(item.get("id")) for item in actions if isinstance(item, Mapping)}
+    for row in lan_registry.get("commands") or []:
+        if not isinstance(row, Mapping) or not row.get("id") or str(row.get("id")) in existing_action_ids:
+            continue
+        actions.append(_lan_command_action(row))
+        existing_action_ids.add(str(row.get("id")))
+
+    presets = merged.setdefault("presets", [])
+    existing_preset_ids = {str(item.get("id")) for item in presets if isinstance(item, Mapping)}
+    for preset in lan_registry.get("presets") or []:
+        if isinstance(preset, Mapping) and preset.get("id") and str(preset.get("id")) not in existing_preset_ids:
+            presets.append(_json_clone(preset))
+            existing_preset_ids.add(str(preset.get("id")))
+
+    merged["lan_control_source"] = str(AGENT_IO_REGISTRY_DIR / "lan_control_tools.json")
+    return merged
+
+
 def load_agent_io_registry() -> Dict[str, Any]:
     """Load editable input semantics and output tool/action definitions."""
     input_registry = load_json_file(
@@ -1337,6 +1608,7 @@ def load_agent_io_registry() -> Dict[str, Any]:
         AGENT_IO_REGISTRY_DIR / "output_tools.json",
         {"schema_version": "fallback", "categories": [], "actions": [], "presets": []},
     )
+    output_registry = _merge_lan_control_registry(output_registry)
     return {
         "registry_dir": str(AGENT_IO_REGISTRY_DIR),
         "input_semantics": input_registry,
@@ -1659,7 +1931,12 @@ def compile_output_actions(data: Mapping[str, Any]) -> Dict[str, Any]:
         command["source_action_ids"] = planned.get("source_action_ids") or []
         materialized_commands.append(command)
         command_history.append(command)
-        dispatch_result = maybe_dispatch_direct_http(command) if data.get("execute", True) else {
+        dispatch_result = dispatch_agent_command(
+            command,
+            raw_lan_dry_run=bool(data.get("raw_lan_dry_run", True)),
+            raw_lan_probe=bool(data.get("raw_lan_probe", True)),
+            allow_raw_lan_send=bool(data.get("allow_raw_lan_send", False)),
+        ) if data.get("execute", True) else {
             "message_id": command.get("message_id"),
             "status": "prepared",
             "reason": "execute=false",
@@ -2157,6 +2434,18 @@ def post_output_test_sequence_route():
     return jsonify(payload)
 
 
+@app.route("/api/hardware/sequence", methods=["POST"])
+def post_hardware_sequence_route():
+    """SDK-facing alias for sending a registered hardware action chain."""
+    data = request.get_json(silent=True) or {}
+    compiled = compile_output_actions(data)
+    status = "sent" if data.get("execute", True) else "prepared"
+    payload = {"status": status, **compiled}
+    event_stream.append({"type": "hardware_sequence", "result": payload, "time_ms": int(time.time() * 1000)})
+    broadcast("device_command", {"commands": compiled["commands"], "dispatch_results": compiled["dispatch_results"], "source": "hardware_sequence"})
+    return jsonify(payload)
+
+
 @app.route("/api/agent/gateway-health", methods=["GET"])
 def get_agent_gateway_health():
     gateway_url = request.args.get("url") or request.args.get("gateway_url") or ""
@@ -2348,11 +2637,56 @@ def post_output_test_command():
     )
     command["manual_test"] = True
     command_history.append(command)
-    dispatch_result = maybe_dispatch_direct_http(command)
+    dispatch_result = dispatch_agent_command(
+        command,
+        raw_lan_dry_run=bool(data.get("raw_lan_dry_run", True)),
+        raw_lan_probe=bool(data.get("raw_lan_probe", True)),
+        allow_raw_lan_send=bool(data.get("allow_raw_lan_send", False)),
+    )
     direct_ack_record = record_direct_dispatch_ack(command, dispatch_result)
     event_stream.append({"type": "output_test_command", "result": {"command": command, "dispatch_result": dispatch_result, "direct_ack_record": direct_ack_record}, "time_ms": int(time.time() * 1000)})
     broadcast("device_command", {"command": command, "dispatch_result": dispatch_result, "source": "output_test"})
     return jsonify({"status": "sent", "command": command, "dispatch_result": dispatch_result, "direct_ack_record": direct_ack_record})
+
+
+@app.route("/api/hardware/command", methods=["POST"])
+def post_hardware_command_route():
+    """SDK-facing alias for sending one standard DeviceCommand."""
+    data = request.get_json(silent=True) or {}
+    planned = data.get("command") if isinstance(data.get("command"), dict) else data
+    if not isinstance(planned, dict):
+        return jsonify({"error": "command object is required"}), 400
+    run_id = data.get("run_id") or f"hardware_sdk_{int(time.time()*1000)}"
+    space_id = data.get("space_id") or planned.get("space_id") or "hardware_sdk"
+    scenario_id = data.get("scenario_id") or planned.get("scenario_id") or "hardware_sdk"
+    route_overrides = data.get("routing_overrides") or {}
+    if data.get("robot_url"):
+        route_overrides["robot_url"] = data.get("robot_url")
+    command = materialize_agent_command(
+        planned,
+        run_id=run_id,
+        space_id=space_id,
+        scenario_id=scenario_id,
+        index=1,
+        route_overrides=route_overrides,
+    )
+    command["source"] = "hardware_sdk"
+    command_history.append(command)
+    dispatch_result = dispatch_agent_command(
+        command,
+        raw_lan_dry_run=bool(data.get("raw_lan_dry_run", True)),
+        raw_lan_probe=bool(data.get("raw_lan_probe", True)),
+        allow_raw_lan_send=bool(data.get("allow_raw_lan_send", False)),
+    ) if data.get("execute", True) else {
+        "message_id": command.get("message_id"),
+        "status": "prepared",
+        "reason": "execute=false",
+    }
+    direct_ack_record = record_direct_dispatch_ack(command, dispatch_result)
+    result = {"status": "sent" if data.get("execute", True) else "prepared", "command": command, "dispatch_result": dispatch_result, "direct_ack_record": direct_ack_record}
+    event_stream.append({"type": "hardware_command", "result": result, "time_ms": int(time.time() * 1000)})
+    broadcast("device_command", {"command": command, "dispatch_result": dispatch_result, "source": "hardware_sdk"})
+    return jsonify(result)
 
 
 @app.route("/api/demo/storyline/<storyline_id>", methods=["POST"])
@@ -2514,6 +2848,13 @@ def get_command_history():
     if command_type:
         commands = [cmd for cmd in commands if (cmd.get("command") or {}).get("type") == command_type]
     return jsonify({"commands": commands[-limit:], "total": len(commands)})
+
+
+@app.route("/api/devices", methods=["GET"])
+def list_device_clients():
+    """List hardware clients that registered with the hub."""
+    devices = sorted(connected_devices.values(), key=lambda item: str(item.get("target_id") or ""))
+    return jsonify({"devices": devices, "total": len(devices)})
 
 
 @app.route("/api/devices/register", methods=["POST"])

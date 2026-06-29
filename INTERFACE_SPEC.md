@@ -204,6 +204,8 @@
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `POST` | `/api/command` | 通用命令下发 |
+| `POST` | `/api/hardware/command` | Python SDK 单条标准 `DeviceCommand` 派发 |
+| `POST` | `/api/hardware/sequence` | Python SDK 按注册动作 ID 编译并派发动作链 |
 | `GET` | `/api/devices/<target_id>/commands` | 硬件客户端轮询命令 |
 | `POST` | `/api/devices/register` | 硬件客户端注册 |
 | `POST` | `/api/device/ack` | 通用设备 ACK |

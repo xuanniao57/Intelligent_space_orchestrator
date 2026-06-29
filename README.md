@@ -157,6 +157,8 @@ tools/fake_g1
 - `POST /api/scene/semantic/ingest`：输入场景语义帧 `SceneSemanticFrame`
 - `POST /api/agent/input-test/assemble`：按注册语义块组装 world state，并可触发 Agent
 - `POST /api/agent/output-test/sequence`：按注册工具组装输出动作链
+- `POST /api/hardware/command`：Python SDK 单条硬件命令入口
+- `POST /api/hardware/sequence`：Python SDK 注册动作链入口
 - `POST /api/robot/ack`：机器人 ACK 回流
 - `POST /api/device/ack`：普通设备 ACK 回流
 - `GET /api/hermes/status`：内部 Agent runtime 状态。前端不展示 Hermes 名称，但该兼容路径保留给开发调试。
@@ -166,6 +168,7 @@ tools/fake_g1
 ```text
 INTERFACE_SPEC.md
 INFORMATION_FLOW.md
+docs/HARDWARE_PYTHON_SDK.md
 central_hub/data/agent_io_registry/unitree_g1_sdk_alignment_20260625.md
 tools/fake_g1/
 ```
