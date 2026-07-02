@@ -74,22 +74,60 @@ ws_clients: List[Any] = []
 ROOT_DIR = Path(__file__).parent.parent.parent
 DATA_DIR = Path(__file__).parent.parent / "data"
 PLATFORM_REGISTRY_PATH = DATA_DIR / "platform_registry.json"
+ROBOT_LINK_CONFIG_PATH = DATA_DIR / "robot_link_config.json"
 GENERATED_MEDIA_DIR = DATA_DIR / "generated_media"
 AGENT_MEMORY_PATH = DATA_DIR / "zhichang_tongyu_agent_memory.jsonl"
 AGENT_IO_REGISTRY_DIR = DATA_DIR / "agent_io_registry"
 SPEAKER_AUDIO_DIR = Path(os.environ.get("TONGYU_SPEAKER_AUDIO_DIR", "D:/CCC/audio"))
 SUPPORTED_SPEAKER_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".wma"}
+
+
+def _load_robot_link_config() -> Dict[str, Any]:
+    fallback = {
+        "robot_host": {"ip": "192.168.1.172", "gateway_port": 8731},
+        "central_receive": {"host_ip": "192.168.1.50", "vision_udp_port": 5005, "audio_tcp_port": 6000},
+        "defaults": {"ttl_sec": 600},
+    }
+    try:
+        data = json.loads(ROBOT_LINK_CONFIG_PATH.read_text(encoding="utf-8-sig"))
+        if isinstance(data, dict):
+            for group, values in fallback.items():
+                data.setdefault(group, {})
+                if isinstance(data[group], dict):
+                    for key, value in values.items():
+                        data[group].setdefault(key, value)
+            return data
+    except Exception as exc:
+        logger.warning("Could not load robot link config %s: %s", ROBOT_LINK_CONFIG_PATH, exc)
+    return fallback
+
+
+def _int_config(value: Any, fallback: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+ROBOT_LINK_CONFIG = _load_robot_link_config()
+ROBOT_HOST_IP = os.environ.get("TONGYU_ROBOT_HOST_IP") or str(ROBOT_LINK_CONFIG["robot_host"].get("ip") or "192.168.1.172")
+ROBOT_HOST_GATEWAY_PORT = _int_config(
+    os.environ.get("TONGYU_ROBOT_HOST_PORT") or ROBOT_LINK_CONFIG["robot_host"].get("gateway_port"),
+    8731,
+)
+CENTRAL_RECEIVE_HOST_IP = os.environ.get("TONGYU_CENTRAL_RECEIVE_HOST_IP") or str(ROBOT_LINK_CONFIG["central_receive"].get("host_ip") or "192.168.1.50")
 VISION_STREAM_BIND_HOST = "0.0.0.0"
-VISION_STREAM_PORT = 5005
-VISION_STREAM_EXPECTED_SOURCE_HOST = "192.168.1.172"
+VISION_STREAM_PORT = _int_config(os.environ.get("TONGYU_VISION_STREAM_PORT") or ROBOT_LINK_CONFIG["central_receive"].get("vision_udp_port"), 5005)
+VISION_STREAM_EXPECTED_SOURCE_HOST = ROBOT_HOST_IP
 VISION_STREAM_HEADER = struct.Struct("!I B H H")
 VISION_STREAM_KIND_BY_TYPE = {0: "rgb", 1: "depth"}
 VISION_STREAM_CONTENT_TYPE_BY_KIND = {"rgb": "image/jpeg", "depth": "image/png"}
 VISION_QUEUE_MAX_FRAMES = int(os.environ.get("TONGYU_VISION_QUEUE_MAX_FRAMES", "300"))
 AUDIO_STREAM_BIND_HOST = "0.0.0.0"
-AUDIO_STREAM_PORT = int(os.environ.get("TONGYU_AUDIO_STREAM_PORT", "6000"))
+AUDIO_STREAM_PORT = _int_config(os.environ.get("TONGYU_AUDIO_STREAM_PORT") or ROBOT_LINK_CONFIG["central_receive"].get("audio_tcp_port"), 6000)
 AUDIO_QUEUE_WINDOW_SEC = int(os.environ.get("TONGYU_AUDIO_QUEUE_WINDOW_SEC", "60"))
-ROBOT_HOST_GATEWAY_URL = os.environ.get("TONGYU_ROBOT_HOST_URL", "http://192.168.1.172:8731")
+ROBOT_LINK_TTL_SEC = _int_config(ROBOT_LINK_CONFIG.get("defaults", {}).get("ttl_sec"), 600)
+ROBOT_HOST_GATEWAY_URL = os.environ.get("TONGYU_ROBOT_HOST_URL") or f"http://{ROBOT_HOST_IP}:{ROBOT_HOST_GATEWAY_PORT}"
 
 
 def load_json_file(path: Path, fallback: Dict) -> Dict:
@@ -2641,13 +2679,14 @@ def _public_vision_status() -> Dict[str, Any]:
 @app.route("/api/perception/streams", methods=["GET"])
 def get_perception_streams():
     return jsonify({
+        "robot_link_config": _public_robot_link_config(),
         "streams": [
             {
                 "stream_id": "g1_vision_udp",
                 "label": "G1 RGB/Depth 视觉流",
                 "protocol": "udp_chunked_image_v1",
                 "source_host": VISION_STREAM_EXPECTED_SOURCE_HOST,
-                "target_host": "192.168.1.50",
+                "target_host": CENTRAL_RECEIVE_HOST_IP,
                 "bind_host": VISION_STREAM_BIND_HOST,
                 "port": VISION_STREAM_PORT,
                 "receiver": "central_hub_background_thread",
@@ -2657,7 +2696,7 @@ def get_perception_streams():
                 "label": "G1 原始环境音流",
                 "protocol": "tcp_raw_audio_chunks",
                 "source_host": VISION_STREAM_EXPECTED_SOURCE_HOST,
-                "target_host": "192.168.1.50",
+                "target_host": CENTRAL_RECEIVE_HOST_IP,
                 "bind_host": AUDIO_STREAM_BIND_HOST,
                 "port": AUDIO_STREAM_PORT,
                 "receiver": "central_hub_background_thread",
@@ -2667,7 +2706,7 @@ def get_perception_streams():
                 "label": "G1 对话语音转文字",
                 "protocol": "http_json",
                 "source_host": VISION_STREAM_EXPECTED_SOURCE_HOST,
-                "target_host": "192.168.1.50",
+                "target_host": CENTRAL_RECEIVE_HOST_IP,
                 "endpoint": "POST /api/perception/asr/text",
             },
         ],
@@ -2675,6 +2714,28 @@ def get_perception_streams():
         "audio_status": _public_audio_status(),
         "asr_status": _public_asr_status(),
     })
+
+
+def _public_robot_link_config() -> Dict[str, Any]:
+    return {
+        "robot_host": {
+            "ip": ROBOT_HOST_IP,
+            "gateway_port": ROBOT_HOST_GATEWAY_PORT,
+            "gateway_url": ROBOT_HOST_GATEWAY_URL,
+        },
+        "central_receive": {
+            "host_ip": CENTRAL_RECEIVE_HOST_IP,
+            "vision_udp_port": VISION_STREAM_PORT,
+            "audio_tcp_port": AUDIO_STREAM_PORT,
+        },
+        "defaults": {"ttl_sec": ROBOT_LINK_TTL_SEC},
+        "config_path": str(ROBOT_LINK_CONFIG_PATH),
+    }
+
+
+@app.route("/api/robot-link/config", methods=["GET"])
+def get_robot_link_config():
+    return jsonify(_public_robot_link_config())
 
 
 @app.route("/api/perception/vision/status", methods=["GET"])
@@ -2876,6 +2937,20 @@ def get_robot_host_status():
 @app.route("/api/robot-host/command", methods=["POST"])
 def post_robot_host_command():
     data = request.get_json(silent=True) or {}
+    command = data.get("command") if isinstance(data.get("command"), dict) else {}
+    params = command.get("params") if isinstance(command.get("params"), dict) else {}
+    if command:
+        command["params"] = params
+        domain = str(command.get("domain") or "")
+        action = str(command.get("action") or "")
+        if domain == "video" and action == "start":
+            params.setdefault("hub_ip", CENTRAL_RECEIVE_HOST_IP)
+            params.setdefault("vision_udp_port", VISION_STREAM_PORT)
+            params.setdefault("dst_port", VISION_STREAM_PORT)
+        if domain == "audio" and action == "mic_start":
+            params.setdefault("hub_ip", CENTRAL_RECEIVE_HOST_IP)
+            params.setdefault("audio_tcp_port", AUDIO_STREAM_PORT)
+            params.setdefault("dst_port", AUDIO_STREAM_PORT)
     try:
         return jsonify(_proxy_robot_host("POST", "/api/robot/command", data))
     except Exception as exc:

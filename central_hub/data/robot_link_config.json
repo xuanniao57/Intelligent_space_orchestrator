@@ -1,0 +1,14 @@
+{
+  "robot_host": {
+    "ip": "192.168.1.172",
+    "gateway_port": 8731
+  },
+  "central_receive": {
+    "host_ip": "192.168.1.50",
+    "vision_udp_port": 5005,
+    "audio_tcp_port": 6000
+  },
+  "defaults": {
+    "ttl_sec": 600
+  }
+}

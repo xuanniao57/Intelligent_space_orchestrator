@@ -2,270 +2,163 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>G1 Vision Monitor</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>G1 感知流监测</title>
   <style>
-    :root {
-      color-scheme: dark;
-      --bg: #071323;
-      --panel: #0d2036;
-      --line: #24415f;
-      --text: #e8f1ff;
-      --muted: #8fb0d1;
-      --ok: #43d17d;
-      --warn: #f0b94b;
-      --bad: #ff5c78;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background: var(--bg);
-      color: var(--text);
-      font-family: Inter, "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-    header {
-      height: 56px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 18px;
-      border-bottom: 1px solid var(--line);
-      background: #08192d;
-    }
-    .brand {
-      display: flex;
-      align-items: baseline;
-      gap: 12px;
-      min-width: 0;
-    }
-    .mark {
-      width: 34px;
-      height: 34px;
-      display: grid;
-      place-items: center;
-      border: 1px solid #e7b84a;
-      border-radius: 8px;
-      color: #e7b84a;
-      font-weight: 800;
-      font-size: 12px;
-      flex: 0 0 auto;
-    }
-    h1 {
-      margin: 0;
-      font-size: 18px;
-      line-height: 1.1;
-      letter-spacing: 0;
-      white-space: nowrap;
-    }
-    .sub {
-      color: var(--muted);
-      font-size: 12px;
-      white-space: nowrap;
-    }
-    .status {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-      font-size: 12px;
-      color: var(--muted);
-    }
-    .pill {
-      padding: 4px 9px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: #0a1a2f;
-      color: var(--muted);
-    }
-    .pill.ok { color: var(--ok); border-color: rgba(67, 209, 125, .35); }
-    .pill.warn { color: var(--warn); border-color: rgba(240, 185, 75, .4); }
-    .pill.bad { color: var(--bad); border-color: rgba(255, 92, 120, .42); }
-    main {
-      height: calc(100vh - 56px);
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1px;
-      background: var(--line);
-    }
-    section {
-      min-width: 0;
-      background: var(--panel);
-      display: grid;
-      grid-template-rows: 42px 1fr 56px;
-    }
-    .panel-title {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 14px;
-      border-bottom: 1px solid var(--line);
-      color: var(--muted);
-      font-size: 12px;
-    }
-    .panel-title strong {
-      color: var(--text);
-      font-size: 15px;
-    }
-    .image-wrap {
-      min-height: 0;
-      display: grid;
-      place-items: center;
-      background: #030914;
-      position: relative;
-      overflow: hidden;
-    }
-    img {
-      max-width: 100%;
-      max-height: 100%;
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      display: none;
-      image-rendering: auto;
-    }
-    .empty {
-      color: var(--muted);
-      font-size: 14px;
-      text-align: center;
-      padding: 18px;
-    }
-    .meta {
-      padding: 9px 14px;
-      color: var(--muted);
-      border-top: 1px solid var(--line);
-      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-      font-size: 12px;
-      line-height: 1.45;
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-    }
-    @media (max-width: 900px) {
-      header {
-        height: auto;
-        min-height: 56px;
-        align-items: flex-start;
-        flex-direction: column;
-        gap: 8px;
-        padding: 12px;
-      }
-      main {
-        height: auto;
-        min-height: calc(100vh - 86px);
-        grid-template-columns: 1fr;
-      }
-      section { min-height: 48vh; }
-      .status { justify-content: flex-start; }
-    }
+    body{margin:0;background:#071323;color:#e8f1ff;font-family:Arial,"Microsoft YaHei",sans-serif}
+    header{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:10px 14px;background:#08192d;border-bottom:1px solid #24415f}
+    h1{font-size:18px;margin:0}.muted{color:#8fb0d1;font-size:12px}
+    .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pill{border:1px solid #24415f;border-radius:999px;padding:4px 9px;color:#8fb0d1;background:#0a1a2f}
+    .ok{color:#43d17d;border-color:#2e8b56}.bad{color:#ff5c78;border-color:#8b2e45}.warn{color:#f0b94b;border-color:#8b7130}
+    input{background:#06101e;color:#e8f1ff;border:1px solid #24415f;border-radius:6px;padding:7px 8px}
+    button{background:#123456;color:#e8f1ff;border:1px solid #3f6b96;border-radius:6px;padding:7px 10px;cursor:pointer}
+    button:hover{border-color:#e7b84a}
+    main{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#24415f;height:calc(100vh - 62px)}
+    section{background:#0d2036;min-width:0;display:flex;flex-direction:column}
+    .title{display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid #24415f}
+    .viewer{flex:1;min-height:0;display:grid;place-items:center;background:#030914;overflow:hidden}
+    img{max-width:100%;max-height:100%;object-fit:contain;display:none}
+    .empty{color:#8fb0d1}.meta{padding:8px 12px;border-top:1px solid #24415f;color:#8fb0d1;font:12px Consolas,monospace;white-space:pre-wrap}
+    .list{padding:10px 12px;overflow:auto;line-height:1.55}.item{border-bottom:1px solid #24415f;padding:8px 0}
+    @media(max-width:900px){header{align-items:flex-start;flex-direction:column}main{height:auto;grid-template-columns:1fr}section{min-height:42vh}}
   </style>
 </head>
 <body>
   <header>
-    <div class="brand">
-      <div class="mark">ZT</div>
-      <div>
-        <div class="sub">Perception monitor</div>
-        <h1>G1 视觉流监测</h1>
-      </div>
+    <div>
+      <h1>G1 感知流监测</h1>
+      <div class="muted">图像 / 原始声音 / ASR 文本 / 网关控制</div>
     </div>
-    <div class="status">
-      <span id="runState" class="pill warn">connecting</span>
-      <span id="source" class="pill">source -</span>
-      <span id="frames" class="pill">frames 0</span>
-      <span id="age" class="pill">age -</span>
+    <div class="bar">
+      <span id="hubState" class="pill warn">hub checking</span>
+      <input id="robotUrl" size="28" value="http://192.168.1.172:8731" title="机器人 Ubuntu 网关地址" />
+      <input id="ttl" size="5" value="600" title="持续秒数" />
+      <button onclick="robotCmd('video','start')">开图像</button>
+      <button onclick="robotCmd('video','stop')">关图像</button>
+      <button onclick="robotCmd('audio','mic_start')">开声音</button>
+      <button onclick="robotCmd('audio','mic_stop')">关声音</button>
+      <span id="cmdState" class="pill">ready</span>
+      <span id="cfgState" class="pill">config -</span>
     </div>
   </header>
+
   <main>
     <section>
-      <div class="panel-title">
-        <strong>RGB</strong>
-        <span id="rgbTitle">waiting</span>
-      </div>
-      <div class="image-wrap">
-        <img id="rgbImage" alt="G1 RGB stream" />
-        <div id="rgbEmpty" class="empty">等待 RGB 帧</div>
-      </div>
+      <div class="title"><strong>RGB</strong><span id="rgbTitle" class="muted">waiting</span></div>
+      <div class="viewer"><img id="rgbImg" /><div id="rgbEmpty" class="empty">等待 RGB 帧</div></div>
       <div id="rgbMeta" class="meta">-</div>
     </section>
     <section>
-      <div class="panel-title">
-        <strong>Depth</strong>
-        <span id="depthTitle">waiting</span>
-      </div>
-      <div class="image-wrap">
-        <img id="depthImage" alt="G1 depth stream" />
-        <div id="depthEmpty" class="empty">等待 Depth 帧</div>
-      </div>
+      <div class="title"><strong>Depth</strong><span id="depthTitle" class="muted">waiting</span></div>
+      <div class="viewer"><img id="depthImg" /><div id="depthEmpty" class="empty">等待 Depth 帧</div></div>
       <div id="depthMeta" class="meta">-</div>
     </section>
+    <section>
+      <div class="title"><strong>原始声音</strong><span id="audioTitle" class="muted">waiting</span></div>
+      <div id="audioBox" class="list"></div>
+      <div class="meta"><a style="color:#e7b84a" href="/api/perception/audio/raw?seconds=5" download="g1_audio_5s.raw">下载最近 5 秒 raw</a></div>
+    </section>
+    <section>
+      <div class="title"><strong>ASR 文本</strong><span id="asrTitle" class="muted">waiting</span></div>
+      <div id="asrBox" class="list"></div>
+      <div class="meta">POST /api/perception/asr/text</div>
+    </section>
   </main>
+
   <script>
-    const state = {
-      rgb: null,
-      depth: null,
-      errors: 0,
-    };
+    const seen = {rgb:null, depth:null};
+    const linkConfig = {robot_host:{gateway_url:"http://192.168.1.172:8731"}, central_receive:{vision_udp_port:5005,audio_tcp_port:6000}, defaults:{ttl_sec:600}};
+    const $ = id => document.getElementById(id);
+    const clsAge = ms => ms == null ? "warn" : ms < 2000 ? "ok" : ms < 8000 ? "warn" : "bad";
+    const json = async url => (await fetch(url,{cache:"no-store"})).json();
 
-    function byId(id) {
-      return document.getElementById(id);
-    }
-
-    function classifyAge(ms) {
-      if (ms == null) return "warn";
-      if (ms < 1500) return "ok";
-      if (ms < 5000) return "warn";
-      return "bad";
-    }
-
-    function updateImage(kind, summary) {
-      if (!summary || summary.frame_id == null) return;
-      if (state[kind] === summary.frame_id) return;
-      state[kind] = summary.frame_id;
-      const image = byId(kind + "Image");
-      const empty = byId(kind + "Empty");
-      const title = byId(kind + "Title");
-      const meta = byId(kind + "Meta");
-      image.onload = () => {
-        image.style.display = "block";
-        empty.style.display = "none";
-      };
-      image.src = `/api/perception/vision/latest/${kind}?frame=${summary.frame_id}&t=${Date.now()}`;
-      title.textContent = `frame ${summary.frame_id}`;
-      meta.textContent = `${summary.source} / ${summary.bytes} bytes / ${summary.chunks_total} chunks / assembly ${summary.assembly_latency_ms} ms`;
-    }
-
-    async function tick() {
-      try {
-        const response = await fetch(`/api/perception/vision/status?t=${Date.now()}`, { cache: "no-store" });
-        const status = await response.json();
-        const latest = status.latest || {};
-        const ageMs = status.last_frame_age_ms;
-        const runState = byId("runState");
-        runState.textContent = status.running ? "receiver online" : "receiver offline";
-        runState.className = "pill " + (status.running ? classifyAge(ageMs) : "bad");
-
-        const source = latest.rgb?.source || latest.depth?.source || "-";
-        byId("source").textContent = `source ${source}`;
-        byId("frames").textContent = `frames ${status.frames_completed || 0}`;
-        const age = byId("age");
-        age.textContent = ageMs == null ? "age -" : `age ${Math.round(ageMs)} ms`;
-        age.className = "pill " + classifyAge(ageMs);
-
-        updateImage("rgb", latest.rgb);
-        updateImage("depth", latest.depth);
-        state.errors = 0;
-      } catch (error) {
-        state.errors += 1;
-        const runState = byId("runState");
-        runState.textContent = `api error ${state.errors}`;
-        runState.className = "pill bad";
+    async function loadConfig(){
+      try{
+        const c=await json(`/api/robot-link/config?t=${Date.now()}`);
+        Object.assign(linkConfig.robot_host, c.robot_host||{});
+        Object.assign(linkConfig.central_receive, c.central_receive||{});
+        Object.assign(linkConfig.defaults, c.defaults||{});
+        $("robotUrl").value=linkConfig.robot_host.gateway_url || $("robotUrl").value;
+        $("ttl").value=linkConfig.defaults.ttl_sec || $("ttl").value;
+        $("cfgState").textContent=`robot ${linkConfig.robot_host.gateway_port} / img ${linkConfig.central_receive.vision_udp_port} / audio ${linkConfig.central_receive.audio_tcp_port}`;
+        $("cfgState").className="pill ok";
+      }catch(e){
+        $("cfgState").textContent="config fallback";
+        $("cfgState").className="pill warn";
       }
     }
 
-    tick();
-    setInterval(tick, 180);
+    function showImg(kind, s){
+      if(!s || s.frame_id == null) return;
+      if(seen[kind] === s.frame_id) return;
+      seen[kind] = s.frame_id;
+      const img=$(kind+"Img"), empty=$(kind+"Empty");
+      img.onload=()=>{img.style.display="block"; empty.style.display="none";};
+      img.src=`/api/perception/vision/latest/${kind}?frame=${s.frame_id}&t=${Date.now()}`;
+      $(kind+"Title").textContent=`frame ${s.frame_id}`;
+      $(kind+"Meta").textContent=`${s.source||"-"} / ${s.bytes||0} bytes / ${s.chunks_total||0} chunks / ${s.assembly_latency_ms||"-"} ms`;
+    }
+
+    async function pollVision(){
+      try{
+        const s=await json(`/api/perception/vision/status?t=${Date.now()}`);
+        $("hubState").textContent=s.running?`hub online / frames ${s.frames_completed||0}`:"hub offline";
+        $("hubState").className="pill "+(s.running?clsAge(s.last_frame_age_ms):"bad");
+        showImg("rgb", s.latest && s.latest.rgb);
+        showImg("depth", s.latest && s.latest.depth);
+      }catch(e){$("hubState").textContent="hub api error";$("hubState").className="pill bad";}
+    }
+
+    async function pollAudio(){
+      try{
+        const a=await json(`/api/perception/audio/status?t=${Date.now()}`);
+        $("audioTitle").textContent=a.last_chunk_at?`last ${a.last_chunk_at}`:"no chunks";
+        $("audioBox").innerHTML=`<div class="item">running: ${a.running}</div>
+          <div class="item">connections: ${a.connections}</div>
+          <div class="item">chunks_received: ${a.chunks_received}</div>
+          <div class="item">bytes_received: ${a.bytes_received}</div>
+          <div class="item">queue: ${a.queue_chunks} chunks / ${a.queue_bytes} bytes</div>
+          <div class="item">last_age_ms: ${a.last_chunk_age_ms ?? "-"}</div>`;
+      }catch(e){$("audioBox").textContent="audio api error";}
+    }
+
+    async function pollAsr(){
+      try{
+        const h=await json(`/api/perception/asr/history?limit=8&t=${Date.now()}`);
+        $("asrTitle").textContent=`total ${h.total||0}`;
+        const rows=(h.records||[]).slice().reverse().map(r=>`<div class="item"><b>${r.text||""}</b><br><span class="muted">${r.start_time||"-"} -> ${r.end_time||"-"} / recv ${r.received_at||"-"}</span></div>`);
+        $("asrBox").innerHTML=rows.join("") || `<div class="empty">暂无 ASR 文本</div>`;
+      }catch(e){$("asrBox").textContent="asr api error";}
+    }
+
+    async function robotCmd(domain, action){
+      const ttl=Number($("ttl").value||600);
+      const params = action.includes("start") ? {ttl_sec:ttl} : {};
+      if(domain==="video" && action==="start"){
+        params.vision_udp_port=linkConfig.central_receive.vision_udp_port;
+        params.dst_port=linkConfig.central_receive.vision_udp_port;
+        params.hub_ip=linkConfig.central_receive.host_ip;
+      }
+      if(domain==="audio" && action==="mic_start"){
+        params.audio_tcp_port=linkConfig.central_receive.audio_tcp_port;
+        params.dst_port=linkConfig.central_receive.audio_tcp_port;
+        params.hub_ip=linkConfig.central_receive.host_ip;
+      }
+      $("cmdState").textContent="sending"; $("cmdState").className="pill warn";
+      try{
+        const body={robot_url:$("robotUrl").value,protocol:"tongyu.robot.unified.v1",message_id:"web_"+Date.now(),target_id:"unitree_g1",target_type:"robot",ack:true,command:{domain,action,params}};
+        const r=await fetch("/api/robot-host/command",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+        const data=await r.json();
+        $("cmdState").textContent=(data.status||"done")+" / "+(data.route||`${domain}.${action}`);
+        $("cmdState").className="pill "+(r.ok?"ok":"bad");
+      }catch(e){$("cmdState").textContent="send failed";$("cmdState").className="pill bad";}
+    }
+
+    loadConfig();
+    pollVision(); pollAudio(); pollAsr();
+    setInterval(pollVision,500);
+    setInterval(pollAudio,1000);
+    setInterval(pollAsr,1000);
   </script>
 </body>
 </html>
