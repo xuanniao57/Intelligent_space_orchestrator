@@ -33,9 +33,11 @@ ALLOWED_COMMAND_TYPES = {
     "projection.play",
     "projection.stop",
     "projection.show_scene",
+    "lan.raw_command",
+    "lan.wol",
 }
 
-ALLOWED_TARGET_TYPES = {"robot", "spray_gateway", "speaker_gateway", "projection_gateway"}
+ALLOWED_TARGET_TYPES = {"robot", "spray_gateway", "speaker_gateway", "projection_gateway", "lan_control_gateway"}
 
 SCENARIO_DEFINITIONS: List[Dict[str, Any]] = [
     {
@@ -43,14 +45,14 @@ SCENARIO_DEFINITIONS: List[Dict[str, Any]] = [
         "name_cn": "热感知 · 清凉联动",
         "intent": "cool_down_people",
         "trigger_tags": ["hot", "overheating", "human_hot", "mood_unhappy", "cooling_request"],
-        "tools": ["spray.scene", "g1.unitree_sdk_sequence", "speaker.play", "projection.play"],
+        "tools": ["spray.scene", "g1.unitree_sdk_sequence", "speaker.play", "projection.play", "lan.raw_command"],
     },
     {
         "id": "music_cocktail_loop",
         "name_cn": "声音鸡尾酒 · 音乐调和",
         "intent": "music_cocktail",
         "trigger_tags": ["sound_cocktail", "music", "loud", "lively", "active_soundscape"],
-        "tools": ["speaker.play", "projection.play"],
+        "tools": ["speaker.play", "projection.play", "lan.raw_command", "lan.wol"],
     },
 ]
 

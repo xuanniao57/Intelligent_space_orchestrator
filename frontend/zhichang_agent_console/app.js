@@ -1,7 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
-const DEFAULT_ROBOT_BASE_URL = "http://127.0.0.1:8731";
+const DEFAULT_G1_BRIDGE_URL = "http://192.168.1.172:8731";
 const DEFAULT_SPRAY_GATEWAY_URL = "http://192.168.1.50:22001";
 const DEFAULT_SMART_PLUG_IP = "192.168.1.156";
 const DEFAULT_PLUG_TCP_ENDPOINT = "192.168.1.50:8798";
@@ -13,6 +13,8 @@ const state = {
   conversation: [],
   worldStates: {},
   ioRegistry: null,
+  speakerLibrary: { files: [] },
+  selectedSpeakerContentId: "",
   inputSelection: [],
   outputSelection: [],
   inputLayerFilter: "all",
@@ -271,8 +273,8 @@ function taskIdFor(command) {
   return command?.command?.params?.task_id;
 }
 
-function robotBaseUrl() {
-  return ($("#robotUrl")?.value || DEFAULT_ROBOT_BASE_URL).trim().replace(/\/$/, "");
+function robotBridgeUrl() {
+  return ($("#robotUrl")?.value || DEFAULT_G1_BRIDGE_URL).trim().replace(/\/$/, "");
 }
 
 function sprayGatewayUrl() {
@@ -291,6 +293,153 @@ function outputRoutingOverrides() {
   return {
     spray_gateway: { direct_http: sprayGatewayUrl() },
   };
+}
+
+function rawLanOptions() {
+  const allowSend = Boolean($("#allowRawLanSend")?.checked);
+  const dryRun = !allowSend || Boolean($("#rawLanDryRun")?.checked);
+  return {
+    raw_lan_dry_run: dryRun,
+    raw_lan_probe: Boolean($("#rawLanProbe")?.checked ?? true),
+    allow_raw_lan_send: allowSend,
+  };
+}
+
+function selectedOutputActions() {
+  return state.outputSelection.map(outputActionById).filter(Boolean);
+}
+
+function speakerLibraryFiles() {
+  return state.speakerLibrary?.files || [];
+}
+
+function speakerContentId() {
+  return $("#speakerContentSelect")?.value || state.selectedSpeakerContentId || speakerLibraryFiles()[0]?.content_id || "audio_01_music_cocktail_loop";
+}
+
+function speakerVolume() {
+  const value = Number($("#speakerVolume")?.value || 62);
+  if (Number.isNaN(value)) return 62;
+  return Math.max(0, Math.min(100, value));
+}
+
+function speakerLoop() {
+  return Boolean($("#speakerLoop")?.checked);
+}
+
+function outputActionOverrides() {
+  const contentId = speakerContentId();
+  const overrides = {};
+  selectedOutputActions().forEach((action) => {
+    if (action.category !== "speaker" || action.command?.type !== "speaker.play") return;
+    overrides[action.id] = {
+      params: {
+        content_id: contentId,
+        volume: speakerVolume(),
+        loop: speakerLoop(),
+      },
+    };
+  });
+  return overrides;
+}
+
+function outputLinkMode() {
+  const selected = selectedOutputActions();
+  const categories = selected.length
+    ? selected.map((action) => action.category)
+    : (state.outputCategoryFilter && state.outputCategoryFilter !== "all" ? [state.outputCategoryFilter] : []);
+  const has = (category) => categories.includes(category);
+  if (!categories.length) return "all";
+  if (has("spray")) return "spray";
+  if (has("lan_control")) return "lan";
+  if (has("speaker") || has("projection")) return "media";
+  if (has("unitree_sdk") || has("unitree_sequence")) return "robot";
+  return "mixed";
+}
+
+function renderOutputLinkCard() {
+  const card = $("#outputLinkCard");
+  if (!card) return;
+  const mode = outputLinkMode();
+  const selected = selectedOutputActions();
+  const hasSpray = selected.some((action) => action.category === "spray") || mode === "spray";
+  const hasSpeaker = selected.some((action) => action.category === "speaker") || state.outputCategoryFilter === "speaker";
+  const config = {
+    all: {
+      badge: "select",
+      title: "按动作选择链路",
+      summary: "左侧选择喷雾、标准媒体网关、LAN 直控或 G1 动作后，这里只显示对应链路参数。",
+      status: "muted",
+    },
+    spray: {
+      badge: "spray",
+      title: "喷雾 / 智能插座链路",
+      summary: "喷雾通过 HTTP 网关下发 DeviceCommand，再由 8798 复用端口接入智能插座 TCP 连接。",
+      status: "warn",
+    },
+    lan: {
+      badge: "LAN",
+      title: "灯光 / 投影机 / 播控直控链路",
+      summary: "这些动作使用注册表中的 host、port、payload 直连设备。默认干跑只探测端口；确认安全后再取消干跑并允许真实发送。",
+      status: "warn",
+    },
+    media: {
+      badge: "media",
+      title: hasSpeaker ? "中控本机音乐 / 投影网关" : "标准媒体网关",
+      summary: hasSpeaker
+        ? "音响命令会发送给中控本机，由本地播放器播放 D:\\CCC\\audio 中选中的音乐。"
+        : "投影命令继续按 content_id 或 LAN 播控链路执行。",
+      status: "ok",
+    },
+    robot: {
+      badge: "G1",
+      title: "G1 PC2 解码服务链路",
+      summary: "中控把标准 DeviceCommand JSON 转发到 192.168.1.172，由 PC2 服务解码并调用 Unitree SDK。",
+      status: "warn",
+    },
+    mixed: {
+      badge: "mixed",
+      title: "复合输出链",
+      summary: "当前动作链包含多个设备类型；每条 DeviceCommand 会按自己的 target_type 进入对应路由。",
+      status: "warn",
+    },
+  }[mode] || {};
+  $("#outputLinkBadge").textContent = config.badge || mode;
+  $("#outputLinkBadge").className = `mini-badge ${config.status || "muted"}`;
+  $("#outputLinkTitle").textContent = config.title || "设备链路";
+  $("#outputLinkSummary").textContent = config.summary || "";
+  $("#sprayLinkFields")?.classList.toggle("is-hidden", !hasSpray);
+  $("#checkSprayGatewayButton")?.classList.toggle("is-hidden", !hasSpray);
+  $("#sprayGatewayStatus")?.classList.toggle("is-hidden", !hasSpray);
+  $("#lanProtocolHint")?.classList.toggle("is-hidden", mode !== "lan");
+  $("#mediaProtocolHint")?.classList.toggle("is-hidden", mode !== "media");
+  $("#speakerLibraryFields")?.classList.toggle("is-hidden", !hasSpeaker);
+  $("#robotProtocolHint")?.classList.toggle("is-hidden", mode !== "robot");
+  $("#g1BridgeFields")?.classList.toggle("is-hidden", mode !== "robot");
+  renderSpeakerLibraryFields();
+}
+
+function renderSpeakerLibraryFields() {
+  const select = $("#speakerContentSelect");
+  const status = $("#speakerLibraryStatus");
+  if (!select) return;
+  const files = speakerLibraryFiles();
+  select.innerHTML = files.map((file) => `
+    <option value="${escapeHtml(file.content_id)}">${escapeHtml(file.label || file.name || file.content_id)}</option>
+  `).join("") || `<option value="audio_01_music_cocktail_loop">audio_01_music_cocktail_loop</option>`;
+  if (state.selectedSpeakerContentId && files.some((file) => file.content_id === state.selectedSpeakerContentId)) {
+    select.value = state.selectedSpeakerContentId;
+  } else if (files.length) {
+    state.selectedSpeakerContentId = files[0].content_id;
+    select.value = state.selectedSpeakerContentId;
+  }
+  if (status) {
+    const ok = files.length > 0;
+    status.className = `gateway-status ${ok ? "ok" : "warn"}`;
+    status.innerHTML = ok
+      ? `<strong>${files.length} 首可选音乐</strong><span>${escapeHtml(state.speakerLibrary.root || "D:\\CCC\\audio")}</span><span>当前：${escapeHtml(select.value)}</span>`
+      : `<strong>曲库为空或不可读</strong><span>${escapeHtml(state.speakerLibrary.error || state.speakerLibrary.root || "D:\\CCC\\audio")}</span>`;
+  }
 }
 
 function renderSprayGatewayStatus(payload, failedMessage = "") {
@@ -461,28 +610,86 @@ function installLabTemplates() {
           <span id="outputAssemblyCount" class="mini-badge">0</span>
         </div>
         <div class="lab-body">
-          <div class="gateway-card">
-            <label class="field-label" for="sprayUrl">喷雾 HTTP 网关地址</label>
-            <input id="sprayUrl" class="text-input" value="${DEFAULT_SPRAY_GATEWAY_URL}" spellcheck="false">
-            <div class="device-map">
-              <label>
-                <span>智能插座 IP</span>
-                <input id="smartPlugIp" class="text-input compact-input" value="${DEFAULT_SMART_PLUG_IP}" spellcheck="false">
-              </label>
-              <label>
-                <span>插座接入端</span>
-                <input id="plugTcpEndpoint" class="text-input compact-input" value="${DEFAULT_PLUG_TCP_ENDPOINT}" spellcheck="false">
-              </label>
+          <div id="outputLinkCard" class="gateway-card output-link-card">
+            <div class="link-card-head">
+              <div>
+                <p>Link profile</p>
+                <strong id="outputLinkTitle">按动作选择链路</strong>
+              </div>
+              <span id="outputLinkBadge" class="mini-badge muted">select</span>
             </div>
-            <button id="checkSprayGatewayButton" type="button" class="ghost-wide">检测喷雾链路</button>
-            <div id="sprayGatewayStatus" class="gateway-status muted">等待检测：中控 → 喷雾网关 → 智能插座</div>
+            <p id="outputLinkSummary" class="link-card-copy">左侧选择喷雾、标准媒体网关、LAN 直控或 G1 动作后，这里只显示对应链路参数。</p>
+            <div id="sprayLinkFields" class="spray-link-fields is-hidden">
+              <label class="field-label" for="sprayUrl">喷雾 HTTP 网关地址</label>
+              <input id="sprayUrl" class="text-input" value="${DEFAULT_SPRAY_GATEWAY_URL}" spellcheck="false">
+              <div class="device-map">
+                <label>
+                  <span>智能插座 IP</span>
+                  <input id="smartPlugIp" class="text-input compact-input" value="${DEFAULT_SMART_PLUG_IP}" spellcheck="false">
+                </label>
+                <label>
+                  <span>插座接入端</span>
+                  <input id="plugTcpEndpoint" class="text-input compact-input" value="${DEFAULT_PLUG_TCP_ENDPOINT}" spellcheck="false">
+                </label>
+              </div>
+            </div>
+            <div id="lanProtocolHint" class="gateway-status warn is-hidden">
+              <strong>LAN 直控默认只探测</strong>
+              <span>灯光 UDP、投影机 TCP、播控 TCP 都来自左侧注册表；要真实发送必须关闭干跑并勾选允许发送。</span>
+            </div>
+            <div id="mediaProtocolHint" class="gateway-status ok is-hidden">
+              <strong>按 I/O 规范发送媒体命令</strong>
+              <span>音响由中控本机播放 D:\\CCC\\audio 曲库；投影仍按 content_id 或 LAN 播控链路执行。</span>
+            </div>
+            <div id="speakerLibraryFields" class="speaker-library-fields is-hidden">
+              <label class="field-label" for="speakerContentSelect">中控本机音乐</label>
+              <select id="speakerContentSelect" class="select-input" aria-label="speaker content"></select>
+              <div class="device-map">
+                <label>
+                  <span>音量 0-100</span>
+                  <input id="speakerVolume" class="text-input compact-input" type="number" min="0" max="100" value="62">
+                </label>
+                <label class="checkline library-check">
+                  <input id="speakerLoop" type="checkbox">
+                  <span>循环播放</span>
+                </label>
+              </div>
+              <button id="refreshSpeakerLibraryButton" type="button" class="ghost-wide">刷新曲库</button>
+              <div id="speakerLibraryStatus" class="gateway-status muted">读取 D:\\CCC\\audio</div>
+            </div>
+            <div id="robotProtocolHint" class="gateway-status warn is-hidden">
+              <strong>G1 由 PC2 解码执行</strong>
+              <span>中控只发送 JSON；192.168.1.172 上的服务负责把动作表解码为 Unitree SDK 调用，并回传 ACK。</span>
+            </div>
+            <div id="g1BridgeFields" class="speaker-library-fields is-hidden">
+              <label class="field-label" for="robotUrl">PC2 解码服务地址</label>
+              <input id="robotUrl" class="text-input" value="${DEFAULT_G1_BRIDGE_URL}" spellcheck="false">
+              <div class="gateway-status muted">
+                <strong>健康检查</strong>
+                <span>中控电脑可访问：${DEFAULT_G1_BRIDGE_URL}/health</span>
+              </div>
+            </div>
+            <button id="checkSprayGatewayButton" type="button" class="ghost-wide is-hidden">检测喷雾链路</button>
+            <div id="sprayGatewayStatus" class="gateway-status muted is-hidden">等待检测：中控 → 喷雾网关 → 智能插座</div>
           </div>
-          <label class="field-label" for="robotUrl">G1 测试端地址</label>
-          <input id="robotUrl" class="text-input" value="${DEFAULT_ROBOT_BASE_URL}" spellcheck="false">
           <div id="outputAssemblyList" class="assembly-list"></div>
           <div class="input-actions">
             <button id="sendOutputSequenceButton" type="button" class="primary">发送选中动作链</button>
             <button id="clearOutputAssemblyButton" type="button">清空动作链</button>
+          </div>
+          <div class="raw-lan-options">
+            <label class="checkline">
+              <input id="rawLanDryRun" type="checkbox" checked>
+              <span>LAN 指令干跑 / 只探测</span>
+            </label>
+            <label class="checkline">
+              <input id="rawLanProbe" type="checkbox" checked>
+              <span>TCP 端口连通探测</span>
+            </label>
+            <label class="checkline danger-check">
+              <input id="allowRawLanSend" type="checkbox">
+              <span>允许真实发送 LAN payload</span>
+            </label>
           </div>
           <label class="checkline output-check">
             <input id="autoAckOutput" type="checkbox">
@@ -539,11 +746,34 @@ function outputActionById(id) {
 
 async function loadIoRegistry() {
   try {
-    state.ioRegistry = await fetchJson("/api/agent/io-registry");
+    const [registry, speakerLibrary] = await Promise.all([
+      fetchJson("/api/agent/io-registry"),
+      fetchJson("/api/hardware/speaker/library").catch((error) => ({ status: "failed", error: error.message, files: [] })),
+    ]);
+    state.ioRegistry = registry;
+    state.speakerLibrary = speakerLibrary;
+    if (!state.selectedSpeakerContentId && speakerLibrary.files?.length) {
+      state.selectedSpeakerContentId = speakerLibrary.files[0].content_id;
+    }
     renderInputLab();
     renderOutputLab();
   } catch (error) {
     showToast(`注册表加载失败: ${error.message}`);
+  }
+}
+
+async function refreshSpeakerLibrary() {
+  try {
+    state.speakerLibrary = await fetchJson("/api/hardware/speaker/library");
+    if (!state.selectedSpeakerContentId && state.speakerLibrary.files?.length) {
+      state.selectedSpeakerContentId = state.speakerLibrary.files[0].content_id;
+    }
+    renderSpeakerLibraryFields();
+    showToast(`曲库 ${state.speakerLibrary.count || 0} 首`);
+  } catch (error) {
+    state.speakerLibrary = { status: "failed", error: error.message, files: [] };
+    renderSpeakerLibraryFields();
+    showToast(`曲库读取失败: ${error.message}`);
   }
 }
 
@@ -640,6 +870,7 @@ function renderOutputLab() {
       ${escapeHtml(preset.label || preset.id)}
     </button>
   `).join("");
+  renderOutputLinkCard();
   renderOutputAssembly();
 }
 
@@ -661,6 +892,7 @@ function renderOutputAssembly() {
       </article>
     `;
   }).join("") || `<div class="empty">从左侧选择动作，按顺序组装 DeviceCommand 链</div>`;
+  renderOutputLinkCard();
 }
 
 function renderLabResult(kind, payload, status = "ok") {
@@ -797,9 +1029,6 @@ async function simulateAllAcks(commands) {
 
 async function sendFrame(frame) {
   const payload = clone(frame);
-  if (payload.scene?.situation_id === "heat_cooling_loop") {
-    payload.robot_url = robotBaseUrl();
-  }
   const result = await fetchJson("/api/scene/semantic/ingest", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -935,7 +1164,6 @@ async function sendInputAssembly(runAgent = true) {
         selected_ids: state.inputSelection,
         custom_text: $("#inputCustomText")?.value?.trim() || "",
         run_agent: runAgent,
-        robot_url: robotBaseUrl(),
       }),
     });
     const commands = result.result?.commands || [];
@@ -986,8 +1214,10 @@ async function sendOutputSequence() {
       method: "POST",
       body: JSON.stringify({
         action_ids: state.outputSelection,
-        robot_url: robotBaseUrl(),
+        action_overrides: outputActionOverrides(),
+        robot_url: robotBridgeUrl(),
         routing_overrides: outputRoutingOverrides(),
+        ...rawLanOptions(),
         execute: true,
       }),
     });
@@ -1024,7 +1254,7 @@ function outputCommandTemplate(kind) {
     return {
       target_id: "speaker_gateway",
       target_type: "speaker_gateway",
-      command: { type: "speaker.play", params: { task_id: taskId, op: "play", content_id: "music_cocktail_loop", volume: 0.62, loop: false } },
+      command: { type: "speaker.play", params: { task_id: taskId, op: "play", content_id: speakerContentId(), volume: speakerVolume(), loop: speakerLoop() } },
       ack_required: true,
       timeout_ms: 15000,
     };
@@ -1033,7 +1263,7 @@ function outputCommandTemplate(kind) {
     return {
       target_id: "projection_gateway",
       target_type: "projection_gateway",
-      command: { type: "projection.play", params: { task_id: taskId, op: "play", content_id: "sound_wave_visual", loop: false } },
+      command: { type: "projection.play", params: { task_id: taskId, op: "play", content_id: "video_01_sound_wave_visual", loop: false } },
       ack_required: true,
       timeout_ms: 15000,
     };
@@ -1075,8 +1305,9 @@ async function sendOutputCommand(kind) {
         command,
         scenario_id: "output_test",
         space_id: kind === "speaker" || kind === "projection" ? "sound_cocktail_zone_01" : "cooling_zone_01",
-        robot_url: robotBaseUrl(),
+        robot_url: robotBridgeUrl(),
         routing_overrides: outputRoutingOverrides(),
+        ...rawLanOptions(),
       }),
     });
     if ($("#autoAckOutput").checked && !result.direct_ack_record) await simulateAck(result.command, "output_test_manual_command");
@@ -1102,7 +1333,7 @@ async function sendOutputNaturalLanguage() {
       body: JSON.stringify({
         text,
         mode: "output_tool_test",
-        robot_url: robotBaseUrl(),
+        robot_url: robotBridgeUrl(),
         routing_overrides: outputRoutingOverrides(),
       }),
     });
@@ -1164,7 +1395,7 @@ async function refreshAll() {
     renderWorldState();
     renderTrajectory();
     renderInspector();
-    if (state.page === "output") {
+    if (state.page === "output-lab" && (outputLinkMode() === "spray" || selectedOutputActions().some((action) => action.category === "spray"))) {
       refreshSprayGatewayStatus(true);
     }
   } catch (error) {
@@ -1375,6 +1606,11 @@ function bindEvents() {
   bind("#sendGoalButton", "click", submitOperatorGoal);
   bind("#runLoopButton", "click", runLoop);
   bind("#sendOutputTextButton", "click", sendOutputNaturalLanguage);
+  bind("#refreshSpeakerLibraryButton", "click", refreshSpeakerLibrary);
+  bind("#speakerContentSelect", "change", (event) => {
+    state.selectedSpeakerContentId = event.target.value;
+    renderSpeakerLibraryFields();
+  });
   bind("#checkSprayGatewayButton", "click", async () => {
     const payload = await refreshSprayGatewayStatus(false);
     if (payload?.gateway_reachable && payload?.smart_plug?.connected) {

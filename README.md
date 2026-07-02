@@ -11,11 +11,11 @@
 
 - 主监测页：查看感知终端语义回传、Agent 推理/执行链、步骤详情和目标设定。
 - 输入测试页：从注册语义块组装 world state，测试 Agent 对单语义/复合语义的响应。
-- 输出测试页：从注册工具列表组装动作链，测试喷雾、音乐、投影、G1 SDK 桥接等输出。
+- 输出测试页：从注册工具列表组装动作链，测试喷雾、音乐、投影、G1 官方动作表等输出。
 - 两个核心场景：
   - 热感知清凉联动：温度/人群/手势语义 -> 喷雾、投影、G1 递冰水动作链。
   - 声音鸡尾酒音乐调和：多维声音/情绪/活跃度语义 -> 音乐层与投影波形。
-- Fake G1：没有真实机器人时，可以用本地假 G1 服务测试 TCP/HTTP JSON 下发和 ACK 回流。
+- Unitree G1：中控通过机器人 Ubuntu 主机 `192.168.1.172:8731` 的统一网关控制动作、语音、导航，并按需启动视频、麦克风、ASR 回传。
 
 ## 快速开始
 
@@ -54,7 +54,39 @@ TONGYU_AGENT_DISABLE_LLM=1
 
 这样可以用规则和 fallback 技能跑通设备协议、前端和 ACK 闭环。
 
-## 启动 Fake G1
+## Unitree G1 统一网关
+
+中控入口：
+
+```text
+GET  http://127.0.0.1:8798/api/g1/actions
+POST http://127.0.0.1:8798/api/g1/actions/execute
+GET  http://127.0.0.1:8798/api/robot-host/health
+POST http://127.0.0.1:8798/api/robot-host/command
+```
+
+中控不安装、不直接调用 Unitree SDK。真实执行需要机器人 Ubuntu 主机启动统一网关：
+
+```bash
+tongyu-robot-gateway --host 0.0.0.0 --port 8731 --hub-url http://192.168.1.50:8798 --host-ip 192.168.1.172 --network-interface eth0 --register
+```
+
+命令行查看动作表：
+
+```powershell
+tongyu-hardware g1-action-table
+```
+
+中控侧测试机器人网关：
+
+```powershell
+tongyu-robotctl --robot-url http://192.168.1.172:8731 health
+tongyu-hardware robot-video-start --ttl-sec 600
+```
+
+完整接口见 `docs/ROBOT_HOST_UNIFIED_INTERFACE.md`。
+
+## 启动 Fake G1（历史协议测试备用）
 
 另开一个 PowerShell：
 

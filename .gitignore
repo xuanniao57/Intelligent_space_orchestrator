@@ -16,6 +16,7 @@ dist/
 
 # Runtime state and logs
 logs/
+_runtime_logs/
 outputs/
 *.log
 central_hub/data/*.log

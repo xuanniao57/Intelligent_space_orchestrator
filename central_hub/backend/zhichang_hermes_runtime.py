@@ -66,6 +66,20 @@ ZHICHANG_SKILLS = [
         "required_params": ["op", "content_id", "loop"],
     },
     {
+        "id": "lan_raw_command",
+        "name": "lan.raw_command",
+        "target_type": "lan_control_gateway",
+        "description": "Send or dry-run registered TCP/UDP STR/HEX commands for lighting, projectors, playback controllers, and PCs.",
+        "required_params": ["protocol", "host", "port", "payload", "payload_format"],
+    },
+    {
+        "id": "lan_wol",
+        "name": "lan.wol",
+        "target_type": "lan_control_gateway",
+        "description": "Wake a registered display/control PC by MAC address using Wake-on-LAN.",
+        "required_params": ["mac"],
+    },
+    {
         "id": "g1_unitree_sdk_sequence",
         "name": "g1.unitree_sdk_sequence",
         "target_type": "robot",
@@ -80,6 +94,7 @@ DEFAULT_TARGET_IDS = {
     "spray_gateway": "spray_gateway",
     "speaker_gateway": "speaker_gateway",
     "projection_gateway": "projection_gateway",
+    "lan_control_gateway": "lan_control_gateway",
 }
 
 

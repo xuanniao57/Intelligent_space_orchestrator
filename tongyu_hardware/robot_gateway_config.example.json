@@ -1,0 +1,194 @@
+{
+  "target_id": "unitree_g1",
+  "target_type": "robot",
+  "client_id": "g1_ubuntu_01",
+  "hub_url": "http://192.168.1.50:8798",
+  "hub_ip": "192.168.1.50",
+  "ack_path": "/api/robot/ack",
+  "register_path": "/api/devices/register",
+  "host_ip": "192.168.1.172",
+  "port": 8731,
+  "network_interface": "eth0",
+  "log_dir": "./tongyu_gateway_logs",
+  "request_timeout_sec": 8.0,
+  "stop_timeout_sec": 3.0,
+  "env": {},
+  "services": {
+    "tts_udp_receiver": {
+      "description": "Receive UDP text on 127.0.0.1:7000 and call Unitree TTS.",
+      "cmd": [
+        "python3",
+        "/home/unitree/code/udp_receive_call_tts.py",
+        "--port",
+        "7000",
+        "--tts-bin",
+        "/home/unitree/code/g1_tts_once",
+        "--network-interface",
+        "{network_interface}"
+      ],
+      "cwd": "/home/unitree/code",
+      "autostart": false
+    },
+    "arm_udp_receiver": {
+      "description": "Receive UDP arm action packets on 127.0.0.1:8888 and call G1ArmActionClient.",
+      "cmd": [
+        "/home/unitree/code/g1_arm_action_example_udp_eth0",
+        "{network_interface}",
+        "8888"
+      ],
+      "cwd": "/home/unitree/code",
+      "autostart": false
+    },
+    "nav_node": {
+      "description": "Optional long-running navigation node / waypoint follower.",
+      "cmd": [
+        "python3",
+        "/home/unitree/code/humanoid_waypoint_follower.py"
+      ],
+      "cwd": "/home/unitree/code",
+      "autostart": false
+    },
+    "video_relay": {
+      "description": "Robot camera video relay back to central hub.",
+      "cmd": [
+        "python3",
+        "/home/unitree/code/camera_forward_to_hub.py",
+        "--dst-ip",
+        "{hub_ip}",
+        "--dst-port",
+        "5005",
+        "--fps",
+        "5",
+        "--ttl-sec",
+        "{ttl_sec}"
+      ],
+      "cwd": "/home/unitree/code",
+      "autostart": false,
+      "ttl_sec": 600
+    },
+    "mic_relay": {
+      "description": "Forward G1 multicast microphone PCM to the central hub.",
+      "cmd": [
+        "/home/unitree/code/g1_mic_forward_tcp",
+        "--dst-ip",
+        "{hub_ip}",
+        "--dst-port",
+        "6000",
+        "--network-interface",
+        "{network_interface}",
+        "--ttl-sec",
+        "{ttl_sec}"
+      ],
+      "cwd": "/home/unitree/code",
+      "autostart": false,
+      "ttl_sec": 600
+    },
+    "asr_relay": {
+      "description": "Subscribe/recognize dialogue speech and post text back to central hub.",
+      "cmd": [
+        "python3",
+        "/home/unitree/code/asr_relay_to_hub.py",
+        "--hub-url",
+        "{hub_url}",
+        "--network-interface",
+        "{network_interface}"
+      ],
+      "cwd": "/home/unitree/code",
+      "autostart": false,
+      "ttl_sec": 600
+    }
+  },
+  "routes": {
+    "speech.speak": {
+      "handler": "udp",
+      "description": "Speak text through the local TTS receiver.",
+      "ensure_service": "tts_udp_receiver",
+      "host": "127.0.0.1",
+      "port": 7000,
+      "payload": "{text}"
+    },
+    "motion.arm_action": {
+      "handler": "udp",
+      "description": "Execute Unitree G1 arm action by id/name/stop packet.",
+      "ensure_service": "arm_udp_receiver",
+      "host": "127.0.0.1",
+      "port": 8888,
+      "payload": "{action_packet}"
+    },
+    "navigation.goto": {
+      "handler": "subprocess_once",
+      "description": "Send one navigation target to your navigation program.",
+      "cmd": [
+        "python3",
+        "/home/unitree/code/nav_send_goal.py",
+        "--x",
+        "{x}",
+        "--y",
+        "{y}",
+        "--yaw",
+        "{yaw}",
+        "--frame",
+        "{frame}"
+      ],
+      "cwd": "/home/unitree/code",
+      "timeout_sec": 10.0
+    },
+    "video.start": {
+      "handler": "service_start",
+      "service": "video_relay",
+      "default_params": {
+        "ttl_sec": 600
+      }
+    },
+    "video.stop": {
+      "handler": "service_stop",
+      "service": "video_relay"
+    },
+    "video.status": {
+      "handler": "service_status",
+      "service": "video_relay"
+    },
+    "audio.mic_start": {
+      "handler": "service_start",
+      "service": "mic_relay",
+      "default_params": {
+        "ttl_sec": 600
+      }
+    },
+    "audio.mic_stop": {
+      "handler": "service_stop",
+      "service": "mic_relay"
+    },
+    "audio.mic_status": {
+      "handler": "service_status",
+      "service": "mic_relay"
+    },
+    "asr.start": {
+      "handler": "service_start",
+      "service": "asr_relay",
+      "default_params": {
+        "ttl_sec": 600
+      }
+    },
+    "asr.stop": {
+      "handler": "service_stop",
+      "service": "asr_relay"
+    },
+    "asr.status": {
+      "handler": "service_status",
+      "service": "asr_relay"
+    },
+    "service.start": {
+      "handler": "service_start",
+      "service": "{service}"
+    },
+    "service.stop": {
+      "handler": "service_stop",
+      "service": "{service}"
+    },
+    "service.status": {
+      "handler": "service_status",
+      "service": "{service}"
+    }
+  }
+}

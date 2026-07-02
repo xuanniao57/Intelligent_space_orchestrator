@@ -640,6 +640,42 @@ textarea {
   background: rgba(4, 12, 24, 0.32);
 }
 
+.link-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.link-card-head p {
+  margin: 0 0 4px;
+  color: var(--text-muted);
+  font: 11px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+}
+
+.link-card-head strong {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.link-card-copy {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.spray-link-fields,
+.speaker-library-fields {
+  display: grid;
+  gap: 9px;
+}
+
+.is-hidden {
+  display: none !important;
+}
+
 .gateway-card .field-label {
   margin-top: 0;
 }
@@ -659,6 +695,11 @@ textarea {
   color: var(--text-muted);
   font: 11px/1 var(--font-mono);
   letter-spacing: 0.05em;
+}
+
+.library-check {
+  min-height: 34px;
+  align-self: end;
 }
 
 .gateway-status {
@@ -736,6 +777,25 @@ textarea {
   gap: 7px;
   color: var(--text-secondary);
   white-space: nowrap;
+}
+
+.raw-lan-options {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid rgba(255, 159, 26, 0.2);
+  border-radius: 8px;
+  background: rgba(4, 12, 24, 0.42);
+}
+
+.danger-check {
+  color: #ffbf80;
+}
+
+.danger-check input:checked + span {
+  color: var(--orange);
+  font-weight: 800;
 }
 
 .json-drawer {

@@ -20,7 +20,9 @@ import uuid
 import logging
 import re
 import socket
+import struct
 import threading
+from collections import deque
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any, Mapping, MutableMapping
@@ -29,12 +31,18 @@ from enum import Enum
 from urllib.error import HTTPError, URLError
 from urllib.request import Request as UrlRequest, urlopen
 
-from flask import Flask, request, jsonify, send_from_directory, redirect
+from flask import Flask, request, jsonify, send_from_directory, redirect, Response
 from flask_cors import CORS
 from flask_sock import Sock
 
 from abc_square_client import ABCSquareAPIError, ABCSquareClient, load_abc_square_config
 from agent_planner import AgentPlanner, SCENARIO_DEFINITIONS
+from g1_unitree_actions import (
+    G1_TEST_ACTIONS_10,
+    list_g1_actions,
+    planned_g1_steps,
+    resolve_g1_action,
+)
 from zhichang_hermes_runtime import ZhichangHermesRuntime, semantic_text_to_frame
 
 # ============================================================
@@ -69,6 +77,19 @@ PLATFORM_REGISTRY_PATH = DATA_DIR / "platform_registry.json"
 GENERATED_MEDIA_DIR = DATA_DIR / "generated_media"
 AGENT_MEMORY_PATH = DATA_DIR / "zhichang_tongyu_agent_memory.jsonl"
 AGENT_IO_REGISTRY_DIR = DATA_DIR / "agent_io_registry"
+SPEAKER_AUDIO_DIR = Path(os.environ.get("TONGYU_SPEAKER_AUDIO_DIR", "D:/CCC/audio"))
+SUPPORTED_SPEAKER_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".wma"}
+VISION_STREAM_BIND_HOST = "0.0.0.0"
+VISION_STREAM_PORT = 5005
+VISION_STREAM_EXPECTED_SOURCE_HOST = "192.168.1.172"
+VISION_STREAM_HEADER = struct.Struct("!I B H H")
+VISION_STREAM_KIND_BY_TYPE = {0: "rgb", 1: "depth"}
+VISION_STREAM_CONTENT_TYPE_BY_KIND = {"rgb": "image/jpeg", "depth": "image/png"}
+VISION_QUEUE_MAX_FRAMES = int(os.environ.get("TONGYU_VISION_QUEUE_MAX_FRAMES", "300"))
+AUDIO_STREAM_BIND_HOST = "0.0.0.0"
+AUDIO_STREAM_PORT = int(os.environ.get("TONGYU_AUDIO_STREAM_PORT", "6000"))
+AUDIO_QUEUE_WINDOW_SEC = int(os.environ.get("TONGYU_AUDIO_QUEUE_WINDOW_SEC", "60"))
+ROBOT_HOST_GATEWAY_URL = os.environ.get("TONGYU_ROBOT_HOST_URL", "http://192.168.1.172:8731")
 
 
 def load_json_file(path: Path, fallback: Dict) -> Dict:
@@ -464,9 +485,356 @@ agent_context_store: Dict[str, Dict] = {}
 world_state_store: Dict[str, Dict[str, Any]] = {}
 event_block_store: List[Dict[str, Any]] = []
 EVENT_BLOCK_LAYER_ENABLED = False
+G1_SESSION_IDLE_TIMEOUT_SEC = int(os.environ.get("TONGYU_G1_SESSION_IDLE_TIMEOUT_SEC", "90"))
+G1_REAL_CONTROL_IDLE_TIMEOUT_SEC = int(os.environ.get("TONGYU_G1_REAL_CONTROL_IDLE_TIMEOUT_SEC", "20"))
+G1_SESSION_MAX_ACTIVE = int(os.environ.get("TONGYU_G1_SESSION_MAX_ACTIVE", "1"))
+G1_SESSION_MAX_TTL_SEC = int(os.environ.get("TONGYU_G1_SESSION_MAX_TTL_SEC", "1800"))
+g1_session_store: Dict[str, Dict[str, Any]] = {}
+g1_session_lock = threading.Lock()
+g1_session_cleanup_started = False
+vision_stream_lock = threading.Lock()
+vision_stream_receiver_started = False
+vision_stream_status: Dict[str, Any] = {
+    "enabled": True,
+    "running": False,
+    "listen": f"udp://{VISION_STREAM_BIND_HOST}:{VISION_STREAM_PORT}",
+    "expected_source_host": VISION_STREAM_EXPECTED_SOURCE_HOST,
+    "packets_received": 0,
+    "frames_completed": 0,
+    "malformed_packets": 0,
+    "stale_frames_dropped": 0,
+    "last_error": None,
+    "last_frame_at": None,
+}
+vision_latest_frames: Dict[str, Dict[str, Any]] = {}
+vision_frame_queues: Dict[str, deque] = {
+    "rgb": deque(maxlen=VISION_QUEUE_MAX_FRAMES),
+    "depth": deque(maxlen=VISION_QUEUE_MAX_FRAMES),
+}
+audio_stream_lock = threading.Lock()
+audio_stream_receiver_started = False
+audio_stream_status: Dict[str, Any] = {
+    "enabled": True,
+    "running": False,
+    "listen": f"tcp://{AUDIO_STREAM_BIND_HOST}:{AUDIO_STREAM_PORT}",
+    "expected_source_host": VISION_STREAM_EXPECTED_SOURCE_HOST,
+    "connections": 0,
+    "chunks_received": 0,
+    "bytes_received": 0,
+    "last_error": None,
+    "last_chunk_at": None,
+}
+audio_chunk_queue: deque = deque()
+asr_text_history: deque = deque(maxlen=300)
 agent_memory_store: List[Dict] = load_jsonl_file(AGENT_MEMORY_PATH)
 agent_planner = AgentPlanner(ROOT_DIR)
 zhichang_hermes = ZhichangHermesRuntime(ROOT_DIR)
+
+
+def _epoch_to_cst_iso(epoch: float) -> str:
+    return datetime.fromtimestamp(epoch, CST).isoformat()
+
+
+def _public_g1_session(session: Mapping[str, Any], *, include_token: bool = False) -> Dict[str, Any]:
+    item = dict(session)
+    if not include_token:
+        item.pop("token", None)
+    for key in ("created_at_epoch", "last_seen_epoch", "expires_at_epoch", "released_at_epoch"):
+        if item.get(key):
+            item[key.replace("_epoch", "")] = _epoch_to_cst_iso(float(item[key]))
+    return item
+
+
+def _record_g1_session_event(event_type: str, session: Mapping[str, Any], reason: str = "") -> None:
+    payload = _public_g1_session(session)
+    if reason:
+        payload["reason"] = reason
+    event_stream.append({"type": event_type, "result": payload, "time_ms": int(time.time() * 1000)})
+    broadcast(event_type, payload)
+
+
+def cleanup_g1_sessions(reason: str = "periodic") -> List[Dict[str, Any]]:
+    now = time.time()
+    expired: List[Dict[str, Any]] = []
+    with g1_session_lock:
+        for session in g1_session_store.values():
+            if session.get("status") != "active":
+                continue
+            idle_sec = now - float(session.get("last_seen_epoch") or session.get("created_at_epoch") or now)
+            expired_by_idle = idle_sec > float(session.get("idle_timeout_sec") or G1_SESSION_IDLE_TIMEOUT_SEC)
+            expired_by_ttl = now > float(session.get("expires_at_epoch") or now)
+            if not (expired_by_idle or expired_by_ttl):
+                continue
+            session["status"] = "expired"
+            session["released_at_epoch"] = now
+            session["release_reason"] = "idle_timeout" if expired_by_idle else "ttl_expired"
+            session["managed_proxy_status"] = "released"
+            expired.append(dict(session))
+    for session in expired:
+        _record_g1_session_event("g1_session_released", session, reason or session.get("release_reason", "expired"))
+    return [_public_g1_session(item) for item in expired]
+
+
+def active_g1_sessions() -> List[Dict[str, Any]]:
+    cleanup_g1_sessions()
+    with g1_session_lock:
+        return [
+            _public_g1_session(session)
+            for session in g1_session_store.values()
+            if session.get("status") == "active"
+        ]
+
+
+def start_g1_session_cleanup_thread() -> None:
+    global g1_session_cleanup_started
+    if g1_session_cleanup_started:
+        return
+    g1_session_cleanup_started = True
+
+    def loop() -> None:
+        while True:
+            scan_interval = max(
+                2,
+                min(G1_SESSION_IDLE_TIMEOUT_SEC // 2, G1_REAL_CONTROL_IDLE_TIMEOUT_SEC // 2, 10),
+            )
+            time.sleep(scan_interval)
+            cleanup_g1_sessions()
+
+    thread = threading.Thread(target=loop, name="g1-session-cleanup", daemon=True)
+    thread.start()
+
+
+def start_vision_stream_receiver() -> None:
+    """Start the fixed UDP receiver for PC2 RGB/depth visual frames."""
+    global vision_stream_receiver_started
+    if vision_stream_receiver_started:
+        return
+    vision_stream_receiver_started = True
+
+    def update_status(**kwargs: Any) -> None:
+        with vision_stream_lock:
+            vision_stream_status.update(kwargs)
+
+    def loop() -> None:
+        buffers: Dict[tuple[int, int], Dict[str, Any]] = {}
+        sock_obj: Optional[socket.socket] = None
+        try:
+            sock_obj = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock_obj.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock_obj.bind((VISION_STREAM_BIND_HOST, VISION_STREAM_PORT))
+            sock_obj.settimeout(0.25)
+            update_status(running=True, last_error=None)
+            logger.info(
+                "G1 vision stream receiver listening on udp://%s:%s; expected source %s",
+                VISION_STREAM_BIND_HOST,
+                VISION_STREAM_PORT,
+                VISION_STREAM_EXPECTED_SOURCE_HOST,
+            )
+
+            while True:
+                now = time.time()
+                stale_keys = [
+                    key for key, buffer in buffers.items()
+                    if now - float(buffer.get("last_chunk_at", now)) > 2.0
+                ]
+                if stale_keys:
+                    for key in stale_keys:
+                        buffers.pop(key, None)
+                    with vision_stream_lock:
+                        vision_stream_status["stale_frames_dropped"] += len(stale_keys)
+
+                try:
+                    data, addr = sock_obj.recvfrom(65535)
+                except socket.timeout:
+                    continue
+
+                with vision_stream_lock:
+                    vision_stream_status["packets_received"] += 1
+
+                if len(data) < VISION_STREAM_HEADER.size:
+                    with vision_stream_lock:
+                        vision_stream_status["malformed_packets"] += 1
+                    continue
+                try:
+                    frame_id, img_type, idx, total = VISION_STREAM_HEADER.unpack(data[: VISION_STREAM_HEADER.size])
+                except struct.error:
+                    with vision_stream_lock:
+                        vision_stream_status["malformed_packets"] += 1
+                    continue
+                if total <= 0 or idx >= total:
+                    with vision_stream_lock:
+                        vision_stream_status["malformed_packets"] += 1
+                    continue
+
+                key = (frame_id, img_type)
+                buffer = buffers.get(key)
+                if buffer is None:
+                    buffer = {
+                        "frame_id": frame_id,
+                        "img_type": img_type,
+                        "total": total,
+                        "source": addr,
+                        "first_chunk_at": now,
+                        "last_chunk_at": now,
+                        "chunks": [None] * total,
+                        "received_count": 0,
+                    }
+                    buffers[key] = buffer
+                elif int(buffer["total"]) != total:
+                    with vision_stream_lock:
+                        vision_stream_status["malformed_packets"] += 1
+                    continue
+
+                chunks = buffer["chunks"]
+                if chunks[idx] is None:
+                    buffer["received_count"] += 1
+                chunks[idx] = data[VISION_STREAM_HEADER.size :]
+                buffer["last_chunk_at"] = time.time()
+
+                if int(buffer["received_count"]) < int(buffer["total"]):
+                    continue
+
+                payload = b"".join(chunk for chunk in chunks if chunk is not None)
+                buffers.pop(key, None)
+                completed_at = time.time()
+                kind = VISION_STREAM_KIND_BY_TYPE.get(img_type, f"type_{img_type}")
+                summary = {
+                    "stream_id": "g1_vision_udp",
+                    "frame_id": frame_id,
+                    "img_type": img_type,
+                    "kind": kind,
+                    "source": f"{addr[0]}:{addr[1]}",
+                    "expected_source_host": VISION_STREAM_EXPECTED_SOURCE_HOST,
+                    "bytes": len(payload),
+                    "chunks_total": total,
+                    "assembly_latency_ms": round(max(0.0, (completed_at - float(buffer["first_chunk_at"])) * 1000.0), 2),
+                    "completed_at": _epoch_to_cst_iso(completed_at),
+                    "completed_at_epoch": completed_at,
+                }
+                with vision_stream_lock:
+                    frame_record = {
+                        "summary": summary,
+                        "payload": payload,
+                        "content_type": VISION_STREAM_CONTENT_TYPE_BY_KIND.get(kind, "application/octet-stream"),
+                    }
+                    vision_latest_frames[kind] = frame_record
+                    if kind not in vision_frame_queues:
+                        vision_frame_queues[kind] = deque(maxlen=VISION_QUEUE_MAX_FRAMES)
+                    vision_frame_queues[kind].append(frame_record)
+                    vision_stream_status["frames_completed"] += 1
+                    vision_stream_status["last_frame_at"] = summary["completed_at"]
+                    vision_stream_status["last_frame_at_epoch"] = completed_at
+                broadcast("vision_stream_frame", summary)
+        except OSError as exc:
+            update_status(running=False, last_error=str(exc))
+            logger.warning("G1 vision stream receiver could not bind udp://%s:%s: %s", VISION_STREAM_BIND_HOST, VISION_STREAM_PORT, exc)
+        except Exception as exc:
+            update_status(running=False, last_error=str(exc))
+            logger.exception("G1 vision stream receiver stopped unexpectedly")
+        finally:
+            if sock_obj is not None:
+                sock_obj.close()
+
+    thread = threading.Thread(target=loop, name="g1-vision-stream-receiver", daemon=True)
+    thread.start()
+
+
+def _trim_audio_queue(now: Optional[float] = None) -> None:
+    now = now or time.time()
+    cutoff = now - AUDIO_QUEUE_WINDOW_SEC
+    while audio_chunk_queue and float(audio_chunk_queue[0].get("received_at_epoch") or 0) < cutoff:
+        audio_chunk_queue.popleft()
+
+
+def start_audio_stream_receiver() -> None:
+    """Start raw robot microphone/environment-audio TCP receiver."""
+    global audio_stream_receiver_started
+    if audio_stream_receiver_started:
+        return
+    audio_stream_receiver_started = True
+
+    def update_status(**kwargs: Any) -> None:
+        with audio_stream_lock:
+            audio_stream_status.update(kwargs)
+
+    def handle_client(client: socket.socket, address: tuple[str, int]) -> None:
+        with client:
+            while True:
+                try:
+                    chunk = client.recv(65536)
+                except OSError as exc:
+                    update_status(last_error=str(exc))
+                    break
+                if not chunk:
+                    break
+                now = time.time()
+                record = {
+                    "source": f"{address[0]}:{address[1]}",
+                    "received_at": _epoch_to_cst_iso(now),
+                    "received_at_epoch": now,
+                    "bytes": len(chunk),
+                    "payload": chunk,
+                }
+                with audio_stream_lock:
+                    audio_chunk_queue.append(record)
+                    _trim_audio_queue(now)
+                    audio_stream_status["chunks_received"] += 1
+                    audio_stream_status["bytes_received"] += len(chunk)
+                    audio_stream_status["last_chunk_at"] = record["received_at"]
+                    audio_stream_status["last_chunk_at_epoch"] = now
+
+    def loop() -> None:
+        server_sock: Optional[socket.socket] = None
+        try:
+            server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server_sock.bind((AUDIO_STREAM_BIND_HOST, AUDIO_STREAM_PORT))
+            server_sock.listen(8)
+            update_status(running=True, last_error=None)
+            logger.info(
+                "G1 audio stream receiver listening on tcp://%s:%s; expected source %s",
+                AUDIO_STREAM_BIND_HOST,
+                AUDIO_STREAM_PORT,
+                VISION_STREAM_EXPECTED_SOURCE_HOST,
+            )
+            while True:
+                client, address = server_sock.accept()
+                with audio_stream_lock:
+                    audio_stream_status["connections"] += 1
+                thread = threading.Thread(target=handle_client, args=(client, address), name="g1-audio-client", daemon=True)
+                thread.start()
+        except OSError as exc:
+            update_status(running=False, last_error=str(exc))
+            logger.warning("G1 audio stream receiver could not bind tcp://%s:%s: %s", AUDIO_STREAM_BIND_HOST, AUDIO_STREAM_PORT, exc)
+        except Exception as exc:
+            update_status(running=False, last_error=str(exc))
+            logger.exception("G1 audio stream receiver stopped unexpectedly")
+        finally:
+            if server_sock is not None:
+                server_sock.close()
+
+    thread = threading.Thread(target=loop, name="g1-audio-stream-receiver", daemon=True)
+    thread.start()
+
+
+def _request_session_token(data: Optional[Mapping[str, Any]] = None) -> str:
+    data = data or {}
+    return (
+        request.headers.get("X-Tongyu-Session-Token")
+        or request.headers.get("X-G1-Session-Token")
+        or str(data.get("session_token") or data.get("token") or "")
+    ).strip()
+
+
+def _get_active_g1_session(session_id: str, token: str) -> Optional[Dict[str, Any]]:
+    cleanup_g1_sessions()
+    with g1_session_lock:
+        session = g1_session_store.get(session_id)
+        if not session or session.get("status") != "active":
+            return None
+        if not token or session.get("token") != token:
+            return None
+        return session
 
 
 def rule_summaries() -> List[Dict]:
@@ -748,6 +1116,14 @@ def _bounded_float(value: Any, fallback: float = 0.0) -> float:
     return max(0.0, min(1.0, number))
 
 
+def _positive_float(value: Any, fallback: float, *, maximum: float = 120.0) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = fallback
+    return max(0.0, min(maximum, number))
+
+
 def _scene_text_blob(frame: Mapping[str, Any]) -> str:
     scene = frame.get("scene") or {}
     parts = [
@@ -1006,17 +1382,18 @@ def merge_routing_overrides(
 
 def default_routing_for_command(target_id: str, target_type: str, command_type: str) -> Dict[str, Any]:
     if target_type == "robot":
-        if command_type == "g1.unitree_sdk_sequence":
-            return {
-                "http_poll": f"/api/devices/{target_id}/commands",
-                "ros2_topic": "/talking_spaces/g1/sdk_sequence",
-                "mqtt_topic": f"talking_spaces/{target_id}/sdk_sequence",
-            }
-        return {
+        g1_bridge_url = os.environ.get("TONGYU_G1_BRIDGE_URL", "http://192.168.1.172:8731")
+        routing = {
+            "direct_http": normalize_robot_execute_url(g1_bridge_url),
             "http_poll": f"/api/devices/{target_id}/commands",
-            "ros2_topic": "/talking_spaces/g1/command",
-            "mqtt_topic": f"talking_spaces/{target_id}/command",
+            "ros2_topic": "/talking_spaces/g1/sdk_sequence" if command_type == "g1.unitree_sdk_sequence" else "/talking_spaces/g1/command",
+            "mqtt_topic": f"talking_spaces/{target_id}/sdk_sequence" if command_type == "g1.unitree_sdk_sequence" else f"talking_spaces/{target_id}/command",
+            "bridge_host": "192.168.1.172",
+            "bridge_port": 8731,
         }
+        if command_type == "g1.unitree_sdk_sequence":
+            routing["bridge_contract"] = "pc2_decode_g1_unitree_sdk_sequence"
+        return routing
     if target_type == "spray_gateway":
         spray_gateway_url = os.environ.get("TONGYU_SPRAY_GATEWAY_URL", "http://192.168.1.50:22001")
         routing = {"http_poll": f"/api/devices/{target_id}/commands", "tcp_endpoint": "12003"}
@@ -1025,7 +1402,12 @@ def default_routing_for_command(target_id: str, target_type: str, command_type: 
             routing["direct_http"] = direct_http
         return routing
     if target_type == "speaker_gateway":
-        return {"http_poll": f"/api/devices/{target_id}/commands", "tcp_endpoint": "12004"}
+        speaker_gateway_url = os.environ.get("TONGYU_SPEAKER_GATEWAY_URL", "http://192.168.1.50:22001")
+        routing = {"http_poll": f"/api/devices/{target_id}/commands", "tcp_endpoint": "12004"}
+        direct_http = normalize_gateway_command_url(speaker_gateway_url, target_type)
+        if direct_http:
+            routing["direct_http"] = direct_http
+        return routing
     if target_type == "projection_gateway":
         return {"http_poll": f"/api/devices/{target_id}/commands", "tcp_endpoint": "12005"}
     if target_type == "lan_control_gateway":
@@ -1295,6 +1677,21 @@ def maybe_dispatch_raw_lan(
     return result
 
 
+def _bool_value(value: Any, fallback: bool = False) -> bool:
+    if value is None:
+        return fallback
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on", "real", "send"}:
+        return True
+    if text in {"0", "false", "no", "off", "dry", "dry_run"}:
+        return False
+    return fallback
+
+
 def dispatch_agent_command(
     command: Dict[str, Any],
     *,
@@ -1321,7 +1718,7 @@ def record_direct_dispatch_ack(command: Dict[str, Any], dispatch_result: Dict[st
         return None
 
     if command.get("target_type") == "robot":
-        final_ack = response_payload.get("final_ack")
+        final_ack = response_payload.get("final_ack") or response_payload.get("ack")
         if not isinstance(final_ack, dict) or not final_ack.get("message_id"):
             return None
         ack = dict(final_ack)
@@ -1329,7 +1726,7 @@ def record_direct_dispatch_ack(command: Dict[str, Any], dispatch_result: Dict[st
         ack.setdefault("status", "ok")
         ack.setdefault("stage", "direct_http_final_ack")
         ack.setdefault("device_time", datetime.now(CST).isoformat())
-        ack["transport"] = "direct_http"
+        ack["transport"] = dispatch_result.get("transport") or "direct_http"
         if any(item.get("message_id") == ack.get("message_id") and item.get("stage") == ack.get("stage") for item in robot_ack_history):
             return None
         robot_ack_history.append(ack)
@@ -2216,9 +2613,273 @@ def health():
             "target_command_polling",
             "direct_http_robot_push",
             "generic_device_ack",
-            "generated_media_assets"
+            "generated_media_assets",
+            "g1_vision_udp_receiver",
+            "g1_audio_tcp_receiver",
+            "robot_asr_text_ingest",
+            "robot_host_gateway_proxy"
         ]
     })
+
+
+def _public_vision_status() -> Dict[str, Any]:
+    with vision_stream_lock:
+        latest = {
+            kind: dict(item.get("summary") or {})
+            for kind, item in vision_latest_frames.items()
+        }
+        status = dict(vision_stream_status)
+    now = time.time()
+    if status.get("last_frame_at_epoch"):
+        status["last_frame_age_ms"] = round((now - float(status["last_frame_at_epoch"])) * 1000.0, 2)
+    else:
+        status["last_frame_age_ms"] = None
+    status["latest"] = latest
+    return status
+
+
+@app.route("/api/perception/streams", methods=["GET"])
+def get_perception_streams():
+    return jsonify({
+        "streams": [
+            {
+                "stream_id": "g1_vision_udp",
+                "label": "G1 RGB/Depth 视觉流",
+                "protocol": "udp_chunked_image_v1",
+                "source_host": VISION_STREAM_EXPECTED_SOURCE_HOST,
+                "target_host": "192.168.1.50",
+                "bind_host": VISION_STREAM_BIND_HOST,
+                "port": VISION_STREAM_PORT,
+                "receiver": "central_hub_background_thread",
+            },
+            {
+                "stream_id": "g1_audio_tcp",
+                "label": "G1 原始环境音流",
+                "protocol": "tcp_raw_audio_chunks",
+                "source_host": VISION_STREAM_EXPECTED_SOURCE_HOST,
+                "target_host": "192.168.1.50",
+                "bind_host": AUDIO_STREAM_BIND_HOST,
+                "port": AUDIO_STREAM_PORT,
+                "receiver": "central_hub_background_thread",
+            },
+            {
+                "stream_id": "g1_asr_text",
+                "label": "G1 对话语音转文字",
+                "protocol": "http_json",
+                "source_host": VISION_STREAM_EXPECTED_SOURCE_HOST,
+                "target_host": "192.168.1.50",
+                "endpoint": "POST /api/perception/asr/text",
+            },
+        ],
+        "vision_status": _public_vision_status(),
+        "audio_status": _public_audio_status(),
+        "asr_status": _public_asr_status(),
+    })
+
+
+@app.route("/api/perception/vision/status", methods=["GET"])
+def get_vision_stream_status():
+    return jsonify(_public_vision_status())
+
+
+@app.route("/api/perception/vision/latest", methods=["GET"])
+def get_latest_vision_summaries():
+    return jsonify(_public_vision_status())
+
+
+@app.route("/api/perception/vision/latest/<kind>", methods=["GET"])
+def get_latest_vision_image(kind: str):
+    kind = kind.strip().lower()
+    with vision_stream_lock:
+        item = vision_latest_frames.get(kind)
+    if not item:
+        return jsonify({
+            "error": "vision_frame_not_ready",
+            "kind": kind,
+            "message": "No completed frame has been received for this kind yet.",
+            "vision_status": _public_vision_status(),
+        }), 404
+    summary = item.get("summary") or {}
+    response = Response(item.get("payload") or b"", mimetype=item.get("content_type") or "application/octet-stream")
+    response.headers["X-Tongyu-Frame-Id"] = str(summary.get("frame_id", ""))
+    response.headers["X-Tongyu-Frame-Kind"] = str(summary.get("kind", kind))
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return response
+
+
+def _public_vision_queue(kind: Optional[str] = None, limit: int = 20) -> Dict[str, Any]:
+    with vision_stream_lock:
+        queue_map = {kind: vision_frame_queues.get(kind, deque())} if kind else vision_frame_queues
+        result: Dict[str, Any] = {}
+        for item_kind, queue in queue_map.items():
+            frames = [dict((record.get("summary") or {})) for record in list(queue)[-limit:]]
+            result[item_kind] = {
+                "kind": item_kind,
+                "queue_len": len(queue),
+                "max_frames": VISION_QUEUE_MAX_FRAMES,
+                "frames": frames,
+            }
+    return result
+
+
+@app.route("/api/perception/vision/queue", methods=["GET"])
+def get_vision_queue():
+    limit = min(max(int(request.args.get("limit", "20")), 1), VISION_QUEUE_MAX_FRAMES)
+    return jsonify(_public_vision_queue(limit=limit))
+
+
+@app.route("/api/perception/vision/queue/<kind>", methods=["GET"])
+def get_vision_queue_kind(kind: str):
+    limit = min(max(int(request.args.get("limit", "20")), 1), VISION_QUEUE_MAX_FRAMES)
+    return jsonify(_public_vision_queue(kind=kind.strip().lower(), limit=limit))
+
+
+@app.route("/api/perception/vision/frame/<kind>/<int:frame_id>", methods=["GET"])
+def get_vision_frame(kind: str, frame_id: int):
+    kind = kind.strip().lower()
+    with vision_stream_lock:
+        queue = list(vision_frame_queues.get(kind, []))
+        item = next((record for record in reversed(queue) if (record.get("summary") or {}).get("frame_id") == frame_id), None)
+    if not item:
+        return jsonify({"error": "vision_frame_not_found", "kind": kind, "frame_id": frame_id}), 404
+    response = Response(item.get("payload") or b"", mimetype=item.get("content_type") or "application/octet-stream")
+    response.headers["X-Tongyu-Frame-Id"] = str(frame_id)
+    response.headers["X-Tongyu-Frame-Kind"] = kind
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return response
+
+
+def _public_audio_status() -> Dict[str, Any]:
+    with audio_stream_lock:
+        _trim_audio_queue()
+        status = dict(audio_stream_status)
+        status["queue_window_sec"] = AUDIO_QUEUE_WINDOW_SEC
+        status["queue_chunks"] = len(audio_chunk_queue)
+        status["queue_bytes"] = sum(int(item.get("bytes") or 0) for item in audio_chunk_queue)
+    now = time.time()
+    if status.get("last_chunk_at_epoch"):
+        status["last_chunk_age_ms"] = round((now - float(status["last_chunk_at_epoch"])) * 1000.0, 2)
+    else:
+        status["last_chunk_age_ms"] = None
+    return status
+
+
+@app.route("/api/perception/audio/status", methods=["GET"])
+def get_audio_stream_status():
+    return jsonify(_public_audio_status())
+
+
+@app.route("/api/perception/audio/chunks", methods=["GET"])
+def get_audio_chunks():
+    limit = min(max(int(request.args.get("limit", "20")), 1), 500)
+    with audio_stream_lock:
+        _trim_audio_queue()
+        chunks = [
+            {k: v for k, v in item.items() if k != "payload"}
+            for item in list(audio_chunk_queue)[-limit:]
+        ]
+    return jsonify({"status": _public_audio_status(), "chunks": chunks})
+
+
+@app.route("/api/perception/audio/raw", methods=["GET"])
+def get_audio_raw_snapshot():
+    seconds = min(max(float(request.args.get("seconds", str(AUDIO_QUEUE_WINDOW_SEC))), 0.1), float(AUDIO_QUEUE_WINDOW_SEC))
+    cutoff = time.time() - seconds
+    with audio_stream_lock:
+        _trim_audio_queue()
+        selected = [item for item in audio_chunk_queue if float(item.get("received_at_epoch") or 0) >= cutoff]
+        payload = b"".join(item.get("payload") or b"" for item in selected)
+    response = Response(payload, mimetype="application/octet-stream")
+    response.headers["X-Tongyu-Audio-Chunks"] = str(len(selected))
+    response.headers["X-Tongyu-Audio-Bytes"] = str(len(payload))
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return response
+
+
+def _public_asr_status() -> Dict[str, Any]:
+    latest = asr_text_history[-1] if asr_text_history else None
+    return {"history_len": len(asr_text_history), "latest": latest}
+
+
+@app.route("/api/perception/asr/text", methods=["POST"])
+def ingest_asr_text():
+    data = request.get_json(silent=True) or {}
+    now = time.time()
+    text = str(data.get("text") or data.get("transcript") or "").strip()
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+    start_time = data.get("start_time") or data.get("start_timestamp") or data.get("start_at")
+    end_time = data.get("end_time") or data.get("end_timestamp") or data.get("end_at")
+    record = {
+        "message_id": data.get("message_id") or f"asr_{int(now * 1000)}",
+        "source_id": data.get("source_id") or "unitree_g1_asr",
+        "target_id": data.get("target_id") or "unitree_g1",
+        "text": text,
+        "language": data.get("language") or "zh-CN",
+        "confidence": data.get("confidence"),
+        "start_time": start_time,
+        "end_time": end_time,
+        "received_at": _epoch_to_cst_iso(now),
+        "received_at_epoch": now,
+        "raw": data,
+    }
+    asr_text_history.append(record)
+    event_stream.append({"type": "robot_asr_text", "result": record, "time_ms": int(now * 1000)})
+    broadcast("robot_asr_text", record)
+    return jsonify({"status": "ok", "record": record, "history_len": len(asr_text_history)})
+
+
+@app.route("/api/perception/asr/history", methods=["GET"])
+def get_asr_history():
+    limit = min(max(int(request.args.get("limit", "50")), 1), 300)
+    return jsonify({"records": list(asr_text_history)[-limit:], "total": len(asr_text_history)})
+
+
+def _robot_host_url(path: str = "") -> str:
+    body = request.get_json(silent=True) or {} if request.method == "POST" else {}
+    base = request.args.get("robot_url") or body.get("robot_url") or ROBOT_HOST_GATEWAY_URL
+    if not base:
+        base = ROBOT_HOST_GATEWAY_URL
+    return f"{str(base).rstrip('/')}/{path.lstrip('/')}"
+
+
+def _proxy_robot_host(method: str, path: str, payload: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+    body = None
+    headers = {"Accept": "application/json"}
+    if payload is not None:
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json; charset=utf-8"
+    req = UrlRequest(_robot_host_url(path), data=body, headers=headers, method=method)
+    with urlopen(req, timeout=10.0) as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
+        result = json.loads(raw) if raw else {}
+        result.setdefault("status_code", resp.status)
+        return result
+
+
+@app.route("/api/robot-host/health", methods=["GET"])
+def get_robot_host_health():
+    try:
+        return jsonify(_proxy_robot_host("GET", "/health"))
+    except Exception as exc:
+        return jsonify({"status": "failed", "robot_url": _robot_host_url(), "error": str(exc)}), 502
+
+
+@app.route("/api/robot-host/status", methods=["GET"])
+def get_robot_host_status():
+    try:
+        return jsonify(_proxy_robot_host("GET", "/api/robot/status"))
+    except Exception as exc:
+        return jsonify({"status": "failed", "robot_url": _robot_host_url(), "error": str(exc)}), 502
+
+
+@app.route("/api/robot-host/command", methods=["POST"])
+def post_robot_host_command():
+    data = request.get_json(silent=True) or {}
+    try:
+        return jsonify(_proxy_robot_host("POST", "/api/robot/command", data))
+    except Exception as exc:
+        return jsonify({"status": "failed", "robot_url": _robot_host_url(), "error": str(exc), "payload": data}), 502
 
 
 @app.route("/api/progress", methods=["GET"])
@@ -2446,6 +3107,36 @@ def post_hardware_sequence_route():
     return jsonify(payload)
 
 
+@app.route("/api/hardware/speaker/library", methods=["GET"])
+def get_speaker_library_route():
+    """List audio files that can be played by the central host speaker gateway."""
+    root = SPEAKER_AUDIO_DIR
+    files: List[Dict[str, Any]] = []
+    if root.exists() and root.is_dir():
+        for path in sorted(root.rglob("*"), key=lambda item: str(item).lower()):
+            if not path.is_file() or path.suffix.lower() not in SUPPORTED_SPEAKER_AUDIO_EXTENSIONS:
+                continue
+            try:
+                relative = path.relative_to(root).as_posix()
+                stat = path.stat()
+                files.append({
+                    "content_id": relative,
+                    "name": path.name,
+                    "label": path.stem,
+                    "extension": path.suffix.lower(),
+                    "size_bytes": stat.st_size,
+                    "updated_at": datetime.fromtimestamp(stat.st_mtime, CST).isoformat(),
+                })
+            except OSError:
+                continue
+    return jsonify({
+        "status": "ok" if files else "empty",
+        "root": str(root),
+        "count": len(files),
+        "files": files,
+    })
+
+
 @app.route("/api/agent/gateway-health", methods=["GET"])
 def get_agent_gateway_health():
     gateway_url = request.args.get("url") or request.args.get("gateway_url") or ""
@@ -2612,6 +3303,92 @@ def post_hermes_message():
         frame.setdefault("semantics", {})["operator_goal"] = {"label": text, "level": "test", "tags": tags}
     result = process_scene_semantic_payload(frame)
     return jsonify({"status": "processed", "message": message, "frame": frame, "result": result})
+
+
+@app.route("/api/g1/actions", methods=["GET"])
+def get_g1_actions_route():
+    bridge_url = os.environ.get("TONGYU_G1_BRIDGE_URL", "http://192.168.1.172:8731")
+    return jsonify({
+        "status": "ok",
+        "target_id": "unitree_g1",
+        "execution_host": "pc2_bridge",
+        "bridge_url": normalize_robot_execute_url(bridge_url),
+        "operation_endpoint": "POST /api/g1/actions/execute",
+        "actions": list_g1_actions(),
+        "test10": list(G1_TEST_ACTIONS_10),
+    })
+
+
+@app.route("/api/g1/actions/execute", methods=["POST"])
+def post_g1_actions_execute_route():
+    data = request.get_json(silent=True) or {}
+    raw_actions = data.get("actions")
+    if raw_actions is None:
+        raw_actions = data.get("action_ids")
+    if raw_actions is None:
+        raw_actions = data.get("action_names")
+    if raw_actions is None and data.get("test10"):
+        raw_actions = list(G1_TEST_ACTIONS_10)
+    if raw_actions is None:
+        raw_actions = [data.get("action", data.get("action_id", data.get("action_name")))]
+    actions = list(raw_actions if isinstance(raw_actions, list) else [raw_actions])
+    resolved_actions = [resolve_g1_action(action) for action in actions if action is not None and action != ""]
+    release_after_sec = _positive_float(data.get("release_after_sec"), 2.0, maximum=10.0)
+    sequence = planned_g1_steps(resolved_actions, release_after_sec=release_after_sec)
+    for step in sequence:
+        step.setdefault("primitive", "unitree_sdk_call")
+        step.setdefault("source_primitive", "arm_action" if step.get("client") == "G1ArmActionClient" else "sleep")
+        step.setdefault("layer", "unitree_arm" if step.get("client") == "G1ArmActionClient" else "bridge")
+        args = step.setdefault("args", {})
+        if step.get("client") == "G1ArmActionClient":
+            args.setdefault("action_name", step.get("action_name"))
+            args.setdefault("action_id", step.get("action_id"))
+            args.setdefault("action_map_key", step.get("action_name"))
+        elif step.get("client") == "BridgeRuntime":
+            args.setdefault("seconds", step.get("seconds", release_after_sec))
+    task_id = data.get("task_id") or f"manual_g1_action_{int(time.time()*1000)}"
+    message_id = data.get("message_id") or f"cmd_g1_action_{int(time.time()*1000)}"
+    bridge_url = data.get("robot_url") or data.get("bridge_url") or os.environ.get("TONGYU_G1_BRIDGE_URL", "http://192.168.1.172:8731")
+    planned = {
+        "message_id": message_id,
+        "target_id": "unitree_g1",
+        "target_type": "robot",
+        "space_id": data.get("space_id") or "g1_action_test_zone",
+        "scenario_id": data.get("scenario_id") or "g1_pc2_action_table",
+        "ack_required": True,
+        "timeout_ms": int(_positive_float(data.get("timeout_sec"), 30.0, maximum=120.0) * 1000),
+        "command": {
+            "type": "g1.unitree_sdk_sequence",
+            "params": {
+                "task_id": task_id,
+                "scene_id": data.get("scene_id") or "g1_pc2_action_table",
+                "speech_cn": data.get("speech_cn") or "G1 动作表测试开始。",
+                "safety": dict(data.get("safety") or {"dry_run": True, "speed_limit_mps": 0.25, "min_human_distance_m": 0.8}),
+                "sdk_sequence": sequence,
+            },
+        },
+    }
+    command = materialize_agent_command(
+        planned,
+        run_id=data.get("run_id") or f"manual_g1_action_{int(time.time()*1000)}",
+        space_id=planned["space_id"],
+        scenario_id=planned["scenario_id"],
+        index=1,
+        route_overrides={"robot_url": bridge_url},
+    )
+    command["manual_test"] = True
+    command["source_action_ids"] = [f"g1_arm_{action.name.replace(' ', '_').replace('-', '_')}" for action in resolved_actions]
+    command_history.append(command)
+    dispatch_result = dispatch_agent_command(command) if data.get("execute", True) else {
+        "message_id": command.get("message_id"),
+        "status": "prepared",
+        "reason": "execute=false",
+    }
+    direct_ack_record = record_direct_dispatch_ack(command, dispatch_result)
+    result = {"status": dispatch_result["status"], "command": command, "dispatch_result": dispatch_result, "direct_ack_record": direct_ack_record}
+    event_stream.append({"type": "g1_action_execute", "result": result, "time_ms": int(time.time() * 1000)})
+    broadcast("device_command", {"command": command, "dispatch_result": dispatch_result, "source": "g1_action_table"})
+    return jsonify(result), (200 if dispatch_result["status"] in {"ok", "prepared"} else 502)
 
 
 @app.route("/api/agent/output-test/command", methods=["POST"])
@@ -2850,6 +3627,126 @@ def get_command_history():
     return jsonify({"commands": commands[-limit:], "total": len(commands)})
 
 
+@app.route("/api/g1/sessions", methods=["GET"])
+def list_g1_sessions():
+    cleanup_g1_sessions("list")
+    include_all = request.args.get("all", "false").lower() in {"1", "true", "yes"}
+    with g1_session_lock:
+        sessions = list(g1_session_store.values())
+    if not include_all:
+        sessions = [session for session in sessions if session.get("status") == "active"]
+    active_real = [session for session in sessions if session.get("status") == "active" and session.get("real_control")]
+    return jsonify({
+        "sessions": [_public_g1_session(session) for session in sessions],
+        "active_count": len([session for session in sessions if session.get("status") == "active"]),
+        "active_real_control_count": len(active_real),
+        "max_real_control": G1_SESSION_MAX_ACTIVE,
+        "idle_timeout_sec": G1_SESSION_IDLE_TIMEOUT_SEC,
+        "real_control_idle_timeout_sec": G1_REAL_CONTROL_IDLE_TIMEOUT_SEC,
+        "max_ttl_sec": G1_SESSION_MAX_TTL_SEC,
+    })
+
+
+@app.route("/api/g1/sessions", methods=["POST"])
+def create_g1_session():
+    start_g1_session_cleanup_thread()
+    data = request.get_json(silent=True) or {}
+    cleanup_g1_sessions("before_create")
+    now = time.time()
+    real_control = bool(
+        data.get("real_control")
+        or data.get("enable_real_control")
+        or data.get("allow_real_control")
+        or data.get("operate")
+    )
+    dry_run = bool(data.get("dry_run", not real_control))
+    if dry_run:
+        real_control = False
+    ttl_sec = int(float(data.get("ttl_sec") or min(600, G1_SESSION_MAX_TTL_SEC)))
+    ttl_sec = max(10, min(ttl_sec, G1_SESSION_MAX_TTL_SEC))
+    default_idle_timeout = G1_REAL_CONTROL_IDLE_TIMEOUT_SEC if real_control else G1_SESSION_IDLE_TIMEOUT_SEC
+    idle_timeout_sec = int(float(data.get("idle_timeout_sec") or default_idle_timeout))
+    idle_timeout_sec = max(5, min(idle_timeout_sec, G1_SESSION_MAX_TTL_SEC))
+    with g1_session_lock:
+        active_real = [
+            session
+            for session in g1_session_store.values()
+            if session.get("status") == "active" and session.get("real_control")
+        ]
+        if real_control and len(active_real) >= G1_SESSION_MAX_ACTIVE:
+            return jsonify({
+                "error": "g1 real-control session concurrency limit reached",
+                "active_sessions": [_public_g1_session(session) for session in active_real],
+                "max_active": G1_SESSION_MAX_ACTIVE,
+            }), 409
+        session_id = f"g1sess_{int(now * 1000)}_{uuid.uuid4().hex[:6]}"
+        token = uuid.uuid4().hex
+        session = {
+            "session_id": session_id,
+            "token": token,
+            "target_id": "unitree_g1",
+            "status": "active",
+            "mode": data.get("mode") or ("real_control_lease" if real_control else "dry_run_connectivity_check"),
+            "dry_run": dry_run,
+            "real_control": real_control,
+            "owner": data.get("owner") or data.get("client_id") or "unknown",
+            "client_id": data.get("client_id") or data.get("owner") or "unknown",
+            "client_ip": request.remote_addr,
+            "purpose": data.get("purpose") or "manual_g1_control",
+            "created_at_epoch": now,
+            "last_seen_epoch": now,
+            "expires_at_epoch": now + ttl_sec,
+            "ttl_sec": ttl_sec,
+            "idle_timeout_sec": idle_timeout_sec,
+            "allowed_proxy_ports": data.get("allowed_proxy_ports") or [],
+            "managed_proxy_status": "reserved" if real_control else "dry_run_no_proxy",
+            "last_message": "created",
+        }
+        g1_session_store[session_id] = session
+    _record_g1_session_event("g1_session_created", session)
+    return jsonify({
+        "status": "created",
+        "session": _public_g1_session(session, include_token=True),
+        "use": "Default dry_run sessions only test central-hub access. Pass real_control=true to reserve a live G1 control slot, then keep it alive with heartbeat.",
+    })
+
+
+@app.route("/api/g1/sessions/<session_id>/heartbeat", methods=["POST"])
+def heartbeat_g1_session(session_id: str):
+    data = request.get_json(silent=True) or {}
+    token = _request_session_token(data)
+    session = _get_active_g1_session(session_id, token)
+    if not session:
+        return jsonify({"error": "session not found, expired, inactive, or token mismatch"}), 404
+    with g1_session_lock:
+        session["last_seen_epoch"] = time.time()
+        session["last_message"] = data.get("message") or "heartbeat"
+        session["heartbeat_count"] = int(session.get("heartbeat_count") or 0) + 1
+    return jsonify({"status": "alive", "session": _public_g1_session(session)})
+
+
+@app.route("/api/g1/sessions/<session_id>", methods=["DELETE", "POST"])
+def release_g1_session(session_id: str):
+    data = request.get_json(silent=True) or {}
+    action = data.get("action") or ("release" if request.method == "DELETE" else "")
+    if request.method == "POST" and action not in {"release", "close", "stop"}:
+        return jsonify({"error": "POST requires action=release"}), 400
+    token = _request_session_token(data)
+    with g1_session_lock:
+        session = g1_session_store.get(session_id)
+        if not session:
+            return jsonify({"error": "session not found"}), 404
+        if not token or session.get("token") != token:
+            return jsonify({"error": "session token mismatch"}), 403
+        if session.get("status") == "active":
+            session["status"] = "released"
+            session["released_at_epoch"] = time.time()
+            session["release_reason"] = data.get("reason") or "client_release"
+            session["managed_proxy_status"] = "released"
+    _record_g1_session_event("g1_session_released", session, session.get("release_reason", "client_release"))
+    return jsonify({"status": "released", "session": _public_g1_session(session)})
+
+
 @app.route("/api/devices", methods=["GET"])
 def list_device_clients():
     """List hardware clients that registered with the hub."""
@@ -3066,6 +3963,7 @@ FRONTEND_DIR = ROOT_DIR / "frontend"
 TALKING_SPACES_DIR = ROOT_DIR / "frontend"
 DECK_DIR = ROOT_DIR / "frontend_slides_deck"
 AGENT_CONSOLE_DIR = ROOT_DIR / "frontend" / "zhichang_agent_console"
+VISION_MONITOR_DIR = ROOT_DIR / "frontend" / "vision_monitor"
 
 @app.route("/")
 def index():
@@ -3087,6 +3985,17 @@ def serve_agent_console_asset(path: str):
     if asset_path.exists() and asset_path.is_file():
         return send_from_directory(str(AGENT_CONSOLE_DIR), path)
     return send_from_directory(str(AGENT_CONSOLE_DIR), "index.html")
+
+@app.route("/vision-monitor")
+def serve_vision_monitor():
+    return send_from_directory(str(VISION_MONITOR_DIR), "index.html")
+
+@app.route("/vision-monitor/<path:path>")
+def serve_vision_monitor_asset(path: str):
+    asset_path = VISION_MONITOR_DIR / path
+    if asset_path.exists() and asset_path.is_file():
+        return send_from_directory(str(VISION_MONITOR_DIR), path)
+    return send_from_directory(str(VISION_MONITOR_DIR), "index.html")
 
 @app.route("/frontend/<path:path>")
 def serve_talking_spaces(path: str):
@@ -3118,8 +4027,14 @@ if __name__ == "__main__":
     logger.info("  同语中枢 (Tongyu Central Hub) v0.3.0")
     logger.info(f"  HTTP:  http://{args.host}:{args.port}")
     logger.info(f"  WS:    ws://{args.host}:{args.port}/ws")
+    logger.info(f"  Vision UDP receiver: udp://{VISION_STREAM_BIND_HOST}:{VISION_STREAM_PORT}")
+    logger.info(f"  Audio TCP receiver: tcp://{AUDIO_STREAM_BIND_HOST}:{AUDIO_STREAM_PORT}")
     logger.info(f"  Rules: {len(engine.rules)} ECA rules loaded")
     logger.info(f"  Simulation mode: {simulation_mode}")
     logger.info("=" * 60)
+
+    if not args.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        start_vision_stream_receiver()
+        start_audio_stream_receiver()
 
     app.run(host=args.host, port=args.port, debug=args.debug)
